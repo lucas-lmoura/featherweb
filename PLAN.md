@@ -1,6 +1,6 @@
-# Plano — `leve`: micro framework web async para Python
+# Plano — `featherweb`: micro framework web async para Python
 
-> Nome `leve` é provisório (verificar disponibilidade no PyPI antes da Fase 8).
+> Nome `featherweb`: livre no PyPI em 2026-09-15; reservar antes da Fase 8.
 
 ## 1. Decisões de base
 
@@ -17,7 +17,7 @@
 ## 2. Metas de leveza (mensuráveis)
 
 - Zero dependências obrigatórias.
-- Import do pacote < 15 ms (`python -X importtime -c "import leve"`); módulos pesados (multipart, websocket, staticfiles, auth) importados sob demanda.
+- Import do pacote < 15 ms (`python -X importtime -c "import featherweb"`); módulos pesados (multipart, websocket, staticfiles, auth) importados sob demanda.
 - Núcleo com ~3.500 linhas ou menos (autenticação incluída).
 - Memória ociosa < 20 MB por processo.
 - Hello world / JSON com throughput na faixa de Starlette+uvicorn (benchmark reprodutível em `benchmarks/`).
@@ -45,7 +45,7 @@ Princípios:
 ## 4. Estrutura do pacote
 
 ```
-leve/
+featherweb/
   __init__.py        API pública (App, Route, Get, Post, ..., Response, HTTPError, ...)
   _compat.py         detecção de uvloop/winloop/orjson; json_dumps/json_loads
   server/
@@ -85,7 +85,7 @@ tests/  benchmarks/  examples/
 # myapp/controllers/users.py
 from dataclasses import dataclass
 
-from leve import Delete, Get, HTTPError, Post, Route
+from featherweb import Delete, Get, HTTPError, Post, Route
 
 
 @dataclass
@@ -147,7 +147,7 @@ class AdminController:
 # myapp/app.py
 import os
 
-from leve import App, JWTAuth
+from featherweb import App, JWTAuth
 
 app = App(auth=JWTAuth(secret=os.environ["JWT_SECRET"]))
 app.scan("myapp")  # controllers, middlewares e @ControllerAdvice
@@ -202,7 +202,7 @@ Só tipos do framework são injetáveis: não há container de dependências (se
 # myapp/middlewares/timing.py
 import time
 
-from leve import Middleware, Next, Request, Response
+from featherweb import Middleware, Next, Request, Response
 
 
 @Middleware(order=10)
@@ -239,8 +239,8 @@ class UserController:
 ```
 
 ### 5.8 Execução
-- CLI do framework (`argparse` da stdlib), instalada como script e também via `python -m leve`:
-  `leve run myapp.app:app --host 0.0.0.0 --port 8000 --workers 4`
+- CLI do framework (`argparse` da stdlib), instalada como script e também via `python -m featherweb`:
+  `featherweb run myapp.app:app --host 0.0.0.0 --port 8000 --workers 4`
 - `app.run(host=..., port=...)` para scripts; mesmo runner por baixo.
 - Por ser ASGI, também roda em `uvicorn myapp.app:app`.
 
@@ -299,7 +299,7 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | pendente |
 | 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | pendente |
 | 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | pendente |
-| 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install leve` + exemplo do README funciona | pendente |
+| 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install featherweb` + exemplo do README funciona | pendente |
 
 ## 9. Fora do escopo da v0.1 (candidatos a v0.2+)
 HTTP/2 e HTTP/3 · OAuth (ex.: Google) · geração de OpenAPI (os type hints da Fase 3 já dão a base) · hot reload · `permessage-deflate` · parser C opcional (`httptools`) · rotas avulsas (`@app.get`).

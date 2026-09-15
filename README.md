@@ -1,4 +1,4 @@
-# leve
+# featherweb
 
 Micro framework web async para Python: servidor HTTP/1.1 próprio sobre `asyncio`,
 interface ASGI e zero dependências obrigatórias.

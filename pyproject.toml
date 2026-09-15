@@ -1,5 +1,5 @@
 [project]
-name = "leve"
+name = "featherweb"
 dynamic = ["version"]
 description = "Micro framework web async para Python, leve e sem dependências obrigatórias"
 readme = "README.md"
@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.hatch.version]
-path = "src/leve/__init__.py"
+path = "src/featherweb/__init__.py"
 
 [tool.ruff]
 line-length = 100
@@ -45,7 +45,7 @@ xfail_strict = true
 filterwarnings = ["error"]
 
 [tool.coverage.run]
-source = ["leve"]
+source = ["featherweb"]
 branch = true
 
 [tool.coverage.report]
