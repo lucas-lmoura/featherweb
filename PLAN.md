@@ -152,16 +152,16 @@ if __name__ == "__main__":
 
 ## 8. Fases
 
-| Fase | Entrega | Pronto quando |
-|---|---|---|
-| 0. Setup | `git init`, `uv init --lib`, ruff/pyright/pytest, CI | `uv run pytest` passa no CI |
-| 1. Servidor HTTP | `parser.py`, `protocol.py`, `runner.py` mínimos | App ASGI "cru" responde; keep-alive e pipelining testados; casos de smuggling rejeitados |
-| 2. Núcleo do framework | `App`, `Router`, `Request`, `Response`, erros, middleware, lifespan, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn |
-| 3. Type hints | `params.py`: extração + validação + 422 | Todas as regras da seção 5 cobertas por testes |
-| 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos |
-| 5. WebSocket | `ws_protocol.py` + `websocket.py` | Echo com cliente `websockets`; close/ping corretos |
-| 6. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas |
-| 7. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install leve` + exemplo do README funciona |
+| Fase | Entrega | Pronto quando | Status |
+|---|---|---|---|
+| 0. Setup | `git init`, `uv init --lib`, ruff/pyright/pytest, CI | `uv run pytest` passa no CI | ✅ concluída localmente (CI aguarda o remoto) |
+| 1. Servidor HTTP | `parser.py`, `protocol.py`, `runner.py` mínimos | App ASGI "cru" responde; keep-alive e pipelining testados; casos de smuggling rejeitados | ⏭️ próxima |
+| 2. Núcleo do framework | `App`, `Router`, `Request`, `Response`, erros, middleware, lifespan, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn | pendente |
+| 3. Type hints | `params.py`: extração + validação + 422 | Todas as regras da seção 5 cobertas por testes | pendente |
+| 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | pendente |
+| 5. WebSocket | `ws_protocol.py` + `websocket.py` | Echo com cliente `websockets`; close/ping corretos | pendente |
+| 6. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | pendente |
+| 7. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install leve` + exemplo do README funciona | pendente |
 
 ## 9. Fora do escopo da v0.1 (candidatos a v0.2+)
 HTTP/2 e HTTP/3 · geração de OpenAPI (os type hints da Fase 3 já dão a base) · hot reload · `permessage-deflate` · sessões/auth · templates (usuário integra Jinja se quiser) · parser C opcional (`httptools`).
