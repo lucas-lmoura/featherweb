@@ -11,6 +11,7 @@
 | Estilo de API | Inspirado no Spring Boot: controllers com `@Route` + `@Get`/`@Post`/..., descobertos por scan de pacote; entrada e saída tipadas (seção 5) |
 | Dependências | Runtime só com stdlib. Extras opcionais detectados por `try/import`: `uvloop` (Linux/macOS) / `winloop` (Windows), `orjson` |
 | Python | 3.12+ (CI em 3.12, 3.13, 3.14) |
+| Idioma | Inglês em tudo que é público (código, docstrings, mensagens do framework, README, PyPI); pt-BR neste plano e nos commits |
 | MVP v0.1 | Núcleo HTTP · controllers · estáticos + streaming + multipart · WebSocket · entrada/saída por type hints · autenticação (cookie, sessão, JWT) |
 
 ## 2. Metas de leveza (mensuráveis)
@@ -109,7 +110,7 @@ class UserController:
     async def show(self, id: int) -> UserOut:  # path
         user = await find(id)
         if user is None:
-            raise HTTPError(404, "usuário não encontrado")
+            raise HTTPError(404, "user not found")
         return user  # serializado como UserOut; campos extras omitidos
 
     @Post(status=201)
@@ -234,7 +235,7 @@ class GlobalErrors:
 class UserController:
     @ExceptionHandler(UserNotFound)
     async def not_found(self, exc: UserNotFound) -> Response[ErrorOut]:
-        return Response(ErrorOut(detail="usuário não encontrado"), status=404)
+        return Response(ErrorOut(detail="user not found"), status=404)
 ```
 
 ### 5.8 Execução
