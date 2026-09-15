@@ -1,7 +1,7 @@
 [project]
 name = "featherweb"
 dynamic = ["version"]
-description = "Micro framework web async para Python, leve e sem dependências obrigatórias"
+description = "Lightweight async web framework with class-based controllers and zero required dependencies"
 readme = "README.md"
 authors = [
     { name = "lucas-lmoura", email = "mouradev1997@gmail.com" }

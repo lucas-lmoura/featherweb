@@ -1,4 +1,4 @@
-"""featherweb: micro framework web async, sem dependências obrigatórias."""
+"""featherweb: lightweight async web framework with zero required dependencies."""
 
 __version__ = "0.1.0"
 

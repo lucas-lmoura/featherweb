@@ -1,18 +1,19 @@
 # featherweb
 
-Micro framework web async para Python: servidor HTTP/1.1 próprio sobre `asyncio`,
-interface ASGI e zero dependências obrigatórias.
+A lightweight async web framework for Python, inspired by Spring Boot: class-based
+controllers, typed request and response handling, and its own HTTP/1.1 server built
+on `asyncio`, with zero required dependencies.
 
-> Em desenvolvimento. O roadmap está no [PLAN.md](PLAN.md).
+> Work in progress: not ready for use yet. The roadmap (in Portuguese) is in [PLAN.md](PLAN.md).
 
-## Desenvolvimento
+## Development
 
-Requer [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
-uv sync               # cria o .venv (Python 3.12) com as dependências de dev
-uv run pytest         # testes
+uv sync               # create .venv (Python 3.12) with the dev dependencies
+uv run pytest         # tests
 uv run ruff check     # lint
-uv run ruff format    # formatação
-uv run pyright        # checagem de tipos (modo strict)
+uv run ruff format    # formatting
+uv run pyright        # type checking (strict mode)
 ```
