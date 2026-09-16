@@ -48,6 +48,7 @@ Princípios:
 featherweb/
   __init__.py        API pública (App, Route, Get, Post, ..., Response, HTTPError, ...)
   _compat.py         detecção de uvloop/winloop/orjson; json_dumps/json_loads
+  _types.py          aliases ASGI internos (scope/receive/send)
   server/
     parser.py        parser HTTP/1.1 incremental (request line, headers, Content-Length, chunked)
     protocol.py      HttpProtocol: keep-alive, pipelining, flow control, Expect: 100-continue
@@ -292,8 +293,8 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 | Fase | Entrega | Pronto quando | Status |
 |---|---|---|---|
 | 0. Setup | `git init`, `uv init --lib`, ruff/pyright/pytest, CI | `uv run pytest` passa no CI | ✅ concluída localmente (CI aguarda o remoto) |
-| 1. Servidor HTTP | `parser.py`, `protocol.py`, `runner.py` mínimos | App ASGI "cru" responde; keep-alive e pipelining testados; casos de smuggling rejeitados | ⏭️ próxima |
-| 2. Núcleo do framework | `App`, `Router`, controllers (`@Route`, verbos, `scan`), `Request`, `Response`, `HTTPError`, `@ExceptionHandler`/`@ControllerAdvice`, `@Middleware`, lifespan, CLI, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn | pendente |
+| 1. Servidor HTTP | `parser.py`, `protocol.py`, `runner.py` mínimos | App ASGI "cru" responde; keep-alive e pipelining testados; casos de smuggling rejeitados | ✅ concluída |
+| 2. Núcleo do framework | `App`, `Router`, controllers (`@Route`, verbos, `scan`), `Request`, `Response`, `HTTPError`, `@ExceptionHandler`/`@ControllerAdvice`, `@Middleware`, lifespan, CLI, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn | ⏭️ próxima |
 | 3. Type hints | `params.py` (entrada) + `serialization.py` (retorno tipado, `Response[T]`), 422 | Regras das seções 5.3 e 5.4 cobertas por testes | pendente |
 | 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | pendente |
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | pendente |

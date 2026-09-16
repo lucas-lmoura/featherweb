@@ -33,6 +33,8 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "PERF", "ASYNC", "PT", "RU
 
 [tool.pyright]
 include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 
