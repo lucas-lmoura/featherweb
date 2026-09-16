@@ -302,7 +302,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync                     # create .venv (Python 3.12) with the dev dependencies
-uv run pytest               # 829 tests, across TestClient, the bundled server and uvicorn
+uv run pytest               # across TestClient, the bundled server and uvicorn
 uv run ruff check           # lint
 uv run ruff format          # formatting
 uv run pyright              # type checking, strict
