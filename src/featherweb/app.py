@@ -20,6 +20,7 @@ from .params import Binder, compile_binder
 from .request import DEFAULT_MAX_BODY_SIZE, ClientDisconnected, Request
 from .response import Response
 from .routing import Router, normalize_path, path_param_names
+from .serialization import Serializer, compile_serializer, resolve_return_hint, unwrap_response
 
 __all__ = ["App"]
 
@@ -31,18 +32,25 @@ type Hook = Callable[[], Any]
 class _ErrorHandler:
     """A bound ``@ExceptionHandler`` method and how to call it."""
 
-    __slots__ = ("binder", "handler", "name")
+    __slots__ = ("binder", "handler", "name", "serializer")
 
-    def __init__(self, handler: Callable[..., Awaitable[Any]], binder: Binder, name: str) -> None:
+    def __init__(
+        self,
+        handler: Callable[..., Awaitable[Any]],
+        binder: Binder,
+        name: str,
+        serializer: Serializer | None,
+    ) -> None:
         self.handler = handler
         self.binder = binder
         self.name = name
+        self.serializer = serializer
 
 
 class _Endpoint:
     """A bound controller method, ready to be called."""
 
-    __slots__ = ("binder", "errors", "handler", "name", "status")
+    __slots__ = ("binder", "errors", "handler", "name", "serializer", "status")
 
     def __init__(
         self,
@@ -51,6 +59,7 @@ class _Endpoint:
         status: int,
         name: str,
         errors: Mapping[type[BaseException], _ErrorHandler],
+        serializer: Serializer | None,
     ) -> None:
         self.handler = handler
         self.binder = binder
@@ -58,6 +67,8 @@ class _Endpoint:
         self.name = name
         #: Exception handlers declared on the owning controller.
         self.errors = errors
+        #: Compiled from the return annotation; ``None`` means "send it as it is".
+        self.serializer = serializer
 
 
 class App:
@@ -160,10 +171,11 @@ class App:
                 continue
             bound: Callable[..., Awaitable[Any]] = getattr(controller, name)
             where = f"{cls.__qualname__}.{name}"
+            serializer = _serializer_for(bound)
             for mark in marks:
                 path = _join(prefix, mark.path)
                 binder = compile_binder(bound, path_params=path_param_names(path), where=where)
-                endpoint = _Endpoint(bound, binder, mark.status, where, errors)
+                endpoint = _Endpoint(bound, binder, mark.status, where, errors, serializer)
                 self._router.add(mark.method, path, endpoint)
 
     def _collect_errors(
@@ -177,7 +189,7 @@ class App:
             bound: Callable[..., Awaitable[Any]] = getattr(instance, name)
             where = f"{cls.__qualname__}.{name}"
             binder = compile_binder(bound, exception_type=handles[0], where=where)
-            handler = _ErrorHandler(bound, binder, where)
+            handler = _ErrorHandler(bound, binder, where, _serializer_for(bound))
             for exception_type in handles:
                 if exception_type in into:
                     raise TypeError(
@@ -255,9 +267,9 @@ class App:
         try:
             endpoint, params = self._resolve(request)
             request.path_params = params
-            arguments = endpoint.binder.build(request, params)
+            arguments = await endpoint.binder.build(request, params)
             result = await endpoint.handler(**arguments)
-            return _to_response(result, endpoint.status)
+            return _make_response(result, endpoint.status, endpoint.serializer)
         except Exception as exc:
             errors = endpoint.errors if endpoint is not None else None
             return await self._error_response(exc, request, errors)
@@ -291,12 +303,13 @@ class App:
         handler = self._find_handler(type(exc), local)
         if handler is not None:
             try:
-                result = await handler.handler(**handler.binder.build(request, {}, exc))
+                arguments = await handler.binder.build(request, {}, exc)
+                result = await handler.handler(**arguments)
             except Exception:
                 logger.exception("exception handler %s failed", handler.name)
             else:
                 status = exc.status if isinstance(exc, HTTPError) else 500
-                return _to_response(result, status)
+                return _make_response(result, status, handler.serializer)
         return self._fallback(exc, request)
 
     def _find_handler(
@@ -341,11 +354,26 @@ class App:
         return f"<App {len(self._middlewares)} middlewares>"
 
 
-def _to_response(result: Any, status: int) -> Response[Any]:
+def _serializer_for(handler: Callable[..., Any]) -> Serializer | None:
+    """Compile the return annotation, looking through ``Response[T]``."""
+    hint = resolve_return_hint(handler)
+    inner = unwrap_response(hint)
+    return compile_serializer(inner if inner is not None else hint)
+
+
+def _make_response(result: Any, status: int, serializer: Serializer | None) -> Response[Any]:
+    """Turn what the handler returned into a response, the way its annotation says."""
     if isinstance(result, Response):
-        return cast(Response[Any], result)
+        response = cast(Response[Any], result)
+        if not response.has_explicit_status:
+            response.status = status  # the one the verb (or the error) declared
+        if serializer is not None and response.content is not None:
+            response.content = serializer(response.content)
+        return response
     if result is None:
         return Response(None, status=204 if status == 200 else status)
+    if serializer is not None:
+        result = serializer(result)
     return Response(result, status=status)
 
 

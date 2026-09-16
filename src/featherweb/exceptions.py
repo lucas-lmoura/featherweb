@@ -7,7 +7,7 @@ from typing import Any, Final, TypeVar, overload
 
 from .controllers import require_class
 
-__all__ = ["ControllerAdvice", "ExceptionHandler", "HTTPError"]
+__all__ = ["ControllerAdvice", "ExceptionHandler", "FieldError", "HTTPError", "ValidationError"]
 
 #: Attribute where ``@ExceptionHandler`` records the exception types it answers for.
 HANDLES_ATTR: Final = "__featherweb_handles__"
@@ -33,12 +33,14 @@ class HTTPError(Exception):
     """
 
     status: int = 500
-    detail: str = "internal server error"
+    #: Rendered as the ``detail`` member of the response; usually a string,
+    #: but a structured value when the error has more to say.
+    detail: Any = "internal server error"
 
     def __init__(
         self,
         status: int | None = None,
-        detail: str | None = None,
+        detail: Any = None,
         *,
         headers: Mapping[str, str] | None = None,
     ) -> None:
@@ -48,6 +50,39 @@ class HTTPError(Exception):
             self.detail = detail
         self.headers: dict[str, str] = dict(headers) if headers else {}
         super().__init__(f"{self.status} {self.detail}")
+
+
+class FieldError:
+    """One thing that is wrong with the request, and where it is."""
+
+    __slots__ = ("field", "location", "message")
+
+    def __init__(self, location: str, field: str, message: str) -> None:
+        #: Where the value was looked for: path, query, header, cookie, body or form.
+        self.location = location
+        #: The field itself, dotted for anything nested in the body.
+        self.field = field
+        self.message = message
+
+    def as_dict(self) -> dict[str, str]:
+        return {"location": self.location, "field": self.field, "message": self.message}
+
+    def __repr__(self) -> str:
+        return f"FieldError({self.location}:{self.field}: {self.message})"
+
+
+class ValidationError(HTTPError):
+    """The request did not match what the handler declared.
+
+    It is an :class:`HTTPError`, so it renders as ``{"detail": [...]}`` with
+    status 422 and can be caught by an ``@ExceptionHandler`` like any other.
+    """
+
+    status = 422
+
+    def __init__(self, errors: list[FieldError]) -> None:
+        self.errors = errors
+        super().__init__(detail=[error.as_dict() for error in errors])
 
 
 def ExceptionHandler(

@@ -85,7 +85,7 @@ class Response[BodyT]:
     they are, and anything else is serialized as JSON.
     """
 
-    __slots__ = ("_body", "_cookies", "content", "headers", "media_type", "status")
+    __slots__ = ("_body", "_cookies", "_status_set", "content", "headers", "media_type", "status")
 
     #: Media type used when the caller does not pass one; subclasses override it.
     default_media_type: ClassVar[str | None] = None
@@ -94,16 +94,23 @@ class Response[BodyT]:
         self,
         content: BodyT,
         *,
-        status: int = 200,
+        status: int | None = None,
         headers: Mapping[str, str] | None = None,
         media_type: str | None = None,
     ) -> None:
         self.content = content
-        self.status = status
+        #: Left at 200 unless asked for; the handler's declared status fills it in.
+        self.status = 200 if status is None else status
+        self._status_set = status is not None
         self.headers = MutableHeaders(headers)
         self.media_type = media_type if media_type is not None else type(self).default_media_type
         self._cookies: list[str] = []
         self._body: bytes | None = None
+
+    @property
+    def has_explicit_status(self) -> bool:
+        """Whether the caller chose the status, rather than taking the default."""
+        return self._status_set
 
     def render(self) -> bytes:
         """Serialize the body, remembering the result."""

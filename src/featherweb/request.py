@@ -17,6 +17,9 @@ __all__ = ["Headers", "QueryParams", "Request"]
 #: Buffered bodies larger than this are refused with 413; streaming is unaffected.
 DEFAULT_MAX_BODY_SIZE: Final = 1024 * 1024
 
+#: Marks "the body has not been parsed yet", which ``None`` cannot express.
+_UNREAD: Final = object()
+
 
 class Headers(Mapping[str, str]):
     """Read-only, case-insensitive view over the request headers."""
@@ -99,6 +102,7 @@ class Request:
         "_body",
         "_cookies",
         "_headers",
+        "_json",
         "_max_body_size",
         "_query",
         "_receive",
@@ -123,6 +127,7 @@ class Request:
         self._query: QueryParams | None = None
         self._cookies: dict[str, str] | None = None
         self._body: bytes | None = None
+        self._json: Any = _UNREAD
         self._stream_consumed = False
 
     # -- request line ---------------------------------------------------
@@ -213,14 +218,17 @@ class Request:
         return self._body
 
     async def json(self) -> Any:
-        """The body decoded as JSON; malformed input is a 400."""
+        """The body decoded as JSON, parsed once; malformed input is a 400."""
+        if self._json is not _UNREAD:
+            return self._json
         from ._compat import json_loads
 
         body = await self.body()
         try:
-            return json_loads(body)
+            self._json = json_loads(body)
         except ValueError as exc:
             raise HTTPError(400, f"malformed JSON body: {exc}") from exc
+        return self._json
 
     async def form(self) -> QueryParams:
         """A ``application/x-www-form-urlencoded`` body, parsed like a query string.

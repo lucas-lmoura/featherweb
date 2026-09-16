@@ -296,8 +296,8 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 | 0. Setup | `git init`, `uv init --lib`, ruff/pyright/pytest, CI | `uv run pytest` passa no CI | ✅ concluída localmente (CI aguarda o remoto) |
 | 1. Servidor HTTP | `parser.py`, `protocol.py`, `runner.py` mínimos | App ASGI "cru" responde; keep-alive e pipelining testados; casos de smuggling rejeitados | ✅ concluída |
 | 2. Núcleo do framework | `App`, `Router`, controllers (`@Route`, verbos, `scan`), `Request`, `Response`, `HTTPError`, `@ExceptionHandler`/`@ControllerAdvice`, `@Middleware`, lifespan, CLI, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn | ✅ concluída (entrada ainda limitada a path params e tipos do framework; a inferência completa da seção 5.3 é a Fase 3) |
-| 3. Type hints | `params.py` (entrada) + `serialization.py` (retorno tipado, `Response[T]`), 422 | Regras das seções 5.3 e 5.4 cobertas por testes | ⏭️ próxima |
-| 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | pendente |
+| 3. Type hints | `params.py` (entrada) + `serialization.py` (retorno tipado, `Response[T]`), 422 | Regras das seções 5.3 e 5.4 cobertas por testes | ✅ concluída (`File()` e `FileResponse`/`StreamingResponse`, citados em 5.3 e 5.4, dependem do multipart e do streaming da Fase 4) |
+| 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | ⏭️ próxima |
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | pendente |
 | 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | pendente |
 | 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | pendente |

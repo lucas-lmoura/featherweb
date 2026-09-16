@@ -8,7 +8,9 @@ the framework promises must hold in all three.
 from __future__ import annotations
 
 import gzip
-from typing import Any
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Annotated, Any
 from uuid import UUID
 
 import pytest
@@ -17,16 +19,19 @@ from featherweb import (
     CORS,
     App,
     ControllerAdvice,
+    Cookie,
     Delete,
     ExceptionHandler,
     Get,
     GZip,
+    Header,
     HTTPError,
     Middleware,
     Next,
     Patch,
     Post,
     Put,
+    Query,
     RedirectResponse,
     Request,
     Response,
@@ -134,6 +139,71 @@ class UserController:
         raise Unpayable("no money")
 
 
+class Colour(Enum):
+    RED = "red"
+    BLUE = "blue"
+
+
+@dataclass
+class Address:
+    city: str
+    country: str = "pt"
+
+
+@dataclass
+class UserIn:
+    name: str
+    email: str
+    colour: Colour = Colour.RED
+    address: Address | None = None
+    tags: list[str] = field(default_factory=list[str])
+
+
+@dataclass
+class UserOut:
+    id: int
+    name: str
+    colour: Colour
+    address: Address | None = None
+
+
+class StoredUser:
+    """What a repository might hand back: more than the response declares."""
+
+    def __init__(self, id: int, name: str, colour: Colour) -> None:
+        self.id = id
+        self.name = name
+        self.colour = colour
+        self.address = Address("lisbon")
+        self.password = "do not send me"
+
+
+@Route("/typed")
+class TypedController:
+    @Get
+    async def index(self, page: int = 1, tag: list[str] = []) -> list[UserOut]:  # noqa: B006
+        return [StoredUser(page, ",".join(tag) or "ada", Colour.BLUE)]  # type: ignore[list-item]
+
+    @Get("/{id:int}")
+    async def show(self, id: int) -> UserOut:
+        return StoredUser(id, "ada", Colour.RED)  # type: ignore[return-value]
+
+    @Post(status=201)
+    async def create(self, data: UserIn) -> Response[UserOut]:
+        response = Response(UserOut(1, data.name, data.colour, data.address))
+        response.headers["x-created"] = data.email
+        return response
+
+    @Get("/headers")
+    async def from_headers(
+        self,
+        agent: Annotated[str, Header("x-agent")] = "none",
+        session: Annotated[str | None, Cookie()] = None,
+        size: Annotated[int, Query("perPage")] = 10,
+    ) -> dict[str, Any]:
+        return {"agent": agent, "session": session, "size": size}
+
+
 @Route("/files")
 class FileController:
     @Get("/{path:path}")
@@ -175,7 +245,13 @@ class Inner:
 
 def build_app(**kwargs: Any) -> App:
     return App(
-        controllers=[RootController, UserController, FileController, GlobalErrors],
+        controllers=[
+            RootController,
+            UserController,
+            TypedController,
+            FileController,
+            GlobalErrors,
+        ],
         middlewares=[Tagging, Inner],
         **kwargs,
     )
@@ -504,3 +580,82 @@ async def test_every_response_is_framed(serve: Serve, path: str) -> None:
     response = await client.get(path)
     assert response.status in (200, 404)
     assert int(response.headers["content-length"]) == len(response.body)
+
+
+# -- typed input and output -------------------------------------------------
+
+
+async def test_query_parameters_are_converted(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/typed", params={"page": 3, "tag": ["a", "b"]})
+    assert response.status == 200
+    assert response.json() == [
+        {
+            "id": 3,
+            "name": "a,b",
+            "colour": "blue",
+            "address": {"city": "lisbon", "country": "pt"},
+        }
+    ]
+
+
+async def test_only_the_declared_fields_are_sent(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/typed/7")
+    assert response.json() == {
+        "id": 7,
+        "name": "ada",
+        "colour": "red",
+        "address": {"city": "lisbon", "country": "pt"},
+    }
+    assert "password" not in response.text
+
+
+async def test_a_json_body_becomes_a_dataclass(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.post(
+        "/typed",
+        json={
+            "name": "grace",
+            "email": "grace@example.com",
+            "colour": "blue",
+            "address": {"city": "new york", "country": "us"},
+            "extra": "ignored",
+        },
+    )
+    assert response.status == 201
+    assert response.headers["x-created"] == "grace@example.com"
+    assert response.json() == {
+        "id": 1,
+        "name": "grace",
+        "colour": "blue",
+        "address": {"city": "new york", "country": "us"},
+    }
+
+
+async def test_headers_cookies_and_aliases(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get(
+        "/typed/headers",
+        params={"perPage": 5},
+        headers={"x-agent": "pytest"},
+        cookies={"session": "s1"},
+    )
+    assert response.json() == {"agent": "pytest", "session": "s1", "size": 5}
+
+
+async def test_a_bad_query_value_is_422(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/typed", params={"page": "nope"})
+    assert response.status == 422
+    assert response.json() == {
+        "detail": [{"location": "query", "field": "page", "message": "expected an integer"}]
+    }
+
+
+async def test_a_bad_body_field_is_422(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.post("/typed", json={"name": "grace", "address": {"city": 1}})
+    assert response.status == 422
+    reported = {error["field"]: error["message"] for error in response.json()["detail"]}
+    assert reported == {"email": "field required", "address.city": "expected a string"}

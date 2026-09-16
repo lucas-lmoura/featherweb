@@ -87,25 +87,29 @@ def test_unmarked_class_is_refused() -> None:
         App(controllers=[Plain])
 
 
-def test_a_parameter_the_framework_cannot_provide_is_refused() -> None:
+def test_a_type_the_framework_cannot_read_is_refused() -> None:
+    class Database:
+        """Not a model, not a framework type: there is nowhere to read it from."""
+
     @Route("/bad")
     class BadController:
         @Get
-        async def index(self, page: int) -> str:  # not a path parameter, no default
-            return str(page)
+        async def index(self, db: Database) -> str:
+            return str(db)
 
-    with pytest.raises(RouteConfigurationError, match="cannot provide parameter 'page'"):
+    with pytest.raises(RouteConfigurationError, match="cannot read Database from a request"):
         App(controllers=[BadController])
 
 
-def test_parameters_with_defaults_are_left_alone() -> None:
-    @Route("/ok")
-    class OkController:
+def test_a_parameter_without_an_annotation_is_refused() -> None:
+    @Route("/bad")
+    class BadController:
         @Get
-        async def index(self, page: int = 3) -> str:
-            return str(page)
+        async def index(self, page) -> str:  # type: ignore[no-untyped-def]
+            return str(page)  # type: ignore[no-any-expr]
 
-    App(controllers=[OkController])  # registers without complaining
+    with pytest.raises(RouteConfigurationError, match="no annotation"):
+        App(controllers=[BadController])
 
 
 def test_two_global_handlers_for_the_same_exception_are_refused() -> None:
