@@ -8,6 +8,29 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = []
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["asgi", "async", "web", "framework", "http", "websocket", "controllers"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/lucas-lmoura/featherweb"
+Repository = "https://github.com/lucas-lmoura/featherweb"
+Issues = "https://github.com/lucas-lmoura/featherweb/issues"
 
 [project.optional-dependencies]
 # Only for the JWT algorithms the standard library cannot do (RS*/ES*).

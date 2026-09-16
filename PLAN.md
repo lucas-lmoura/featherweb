@@ -1,6 +1,8 @@
 # Plano — `featherweb`: micro framework web async para Python
 
-> Nome `featherweb`: livre no PyPI em 2026-09-15; reservar antes da Fase 8.
+> Nome `featherweb`: conferido livre no PyPI em 2026-09-16 (`/pypi/featherweb/json` responde
+> 404). Continua a reservar — a publicação é o último passo da Fase 8 e está descrita em
+> [RELEASING.md](RELEASING.md).
 
 ## 1. Decisões de base
 
@@ -329,7 +331,7 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | ✅ concluída (echo, ping/pong, close com código e razão e subprotocolo, verificados no servidor próprio e no uvicorn) |
 | 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | ✅ concluída (inclui RS256/ES256 com o extra `crypto` e a recusa do ataque de confusão de algoritmo) |
 | 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | ✅ concluída (medições na seção 2; import e linhas ficaram fora do alvo, com o porquê registrado) |
-| 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install featherweb` + exemplo do README funciona | ⏭️ próxima |
+| 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install featherweb` + exemplo do README funciona | ✅ pronta para publicar (critério verificado com a wheel numa venv limpa; o upload em si é ação do autor, ver [RELEASING.md](RELEASING.md)) |
 
 ## 9. Fora do escopo da v0.1 (candidatos a v0.2+)
 HTTP/2 e HTTP/3 · OAuth (ex.: Google) · geração de OpenAPI (os type hints da Fase 3 já dão a base) · hot reload · `permessage-deflate` · parser C opcional (`httptools`) · rotas avulsas (`@app.get`).
