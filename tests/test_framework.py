@@ -8,8 +8,11 @@ the framework promises must hold in all three.
 from __future__ import annotations
 
 import gzip
+import tempfile
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -22,6 +25,8 @@ from featherweb import (
     Cookie,
     Delete,
     ExceptionHandler,
+    FileResponse,
+    Form,
     Get,
     GZip,
     Header,
@@ -36,9 +41,14 @@ from featherweb import (
     Request,
     Response,
     Route,
+    StreamingResponse,
+    UploadFile,
 )
 
 from .conftest import Serve
+
+#: 100 bytes, so byte offsets in the range tests read clearly.
+SAMPLE = b"0123456789" * 10
 
 
 class UserNotFound(HTTPError):
@@ -215,6 +225,30 @@ class FileController:
         return {"id": str(id)}
 
 
+#: A directory of its own, so the static mount has something real to serve.
+ASSETS = Path(tempfile.mkdtemp(prefix="featherweb-assets-"))
+(ASSETS / "sample.txt").write_bytes(SAMPLE)
+
+
+@Route("/stream")
+class StreamingController:
+    @Get("/chunks")
+    async def chunks(self) -> StreamingResponse:
+        async def produce() -> AsyncIterator[bytes]:
+            for index in range(4):
+                yield f"part{index};".encode()
+
+        return StreamingResponse(produce(), media_type="text/plain")
+
+    @Get("/file")
+    async def file(self, request: Request) -> FileResponse:
+        return FileResponse(ASSETS / "sample.txt", request=request)
+
+    @Post("/upload")
+    async def upload(self, note: Annotated[str, Form()], doc: UploadFile) -> dict[str, Any]:
+        return {"note": note, "name": doc.filename, "body": (await doc.read()).decode()}
+
+
 @ControllerAdvice
 class GlobalErrors:
     @ExceptionHandler(PermissionError)
@@ -244,17 +278,22 @@ class Inner:
 
 
 def build_app(**kwargs: Any) -> App:
-    return App(
+    app = App(
         controllers=[
             RootController,
             UserController,
             TypedController,
             FileController,
+            StreamingController,
             GlobalErrors,
         ],
         middlewares=[Tagging, Inner],
         **kwargs,
     )
+    from featherweb.staticfiles import StaticFiles
+
+    app.mount("/assets", StaticFiles(ASSETS))
+    return app
 
 
 # -- responses --------------------------------------------------------------
@@ -659,3 +698,74 @@ async def test_a_bad_body_field_is_422(serve: Serve) -> None:
     assert response.status == 422
     reported = {error["field"]: error["message"] for error in response.json()["detail"]}
     assert reported == {"email": "field required", "address.city": "expected a string"}
+
+
+# -- streaming, files and uploads, on every stack ----------------------------
+
+
+async def test_a_streamed_body_arrives_whole(serve: Serve) -> None:
+    """On a real socket this is framed as chunked, so the client has to rejoin it."""
+    client = await serve(build_app())
+    response = await client.get("/stream/chunks")
+    assert response.status == 200
+    assert response.text == "part0;part1;part2;part3;"
+
+
+async def test_a_file_is_sent_with_its_length_and_validators(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/stream/file")
+    assert response.status == 200
+    assert response.body == SAMPLE
+    assert response.headers["content-length"] == str(len(SAMPLE))
+    assert response.headers["etag"]
+
+
+async def test_a_cached_file_is_304(serve: Serve) -> None:
+    client = await serve(build_app())
+    etag = (await client.get("/stream/file")).headers["etag"]
+    response = await client.get("/stream/file", headers={"if-none-match": etag})
+    assert response.status == 304
+    assert response.body == b""
+
+
+async def test_a_range_request_is_206(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/stream/file", headers={"range": "bytes=10-19"})
+    assert response.status == 206
+    assert response.body == SAMPLE[10:20]
+    assert response.headers["content-range"] == f"bytes 10-19/{len(SAMPLE)}"
+
+
+async def test_a_mounted_directory_is_served(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/assets/sample.txt")
+    assert response.status == 200
+    assert response.body == SAMPLE
+
+
+async def test_a_mounted_directory_refuses_a_traversal(serve: Serve) -> None:
+    client = await serve(build_app())
+    response = await client.get("/assets/../../etc/passwd")
+    assert response.status == 404
+
+
+async def test_an_upload_round_trips(serve: Serve) -> None:
+    client = await serve(build_app())
+    boundary = "----frame"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="note"\r\n\r\n'
+        "hello\r\n"
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="doc"; filename="a.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+        "file contents\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    response = await client.post(
+        "/stream/upload",
+        content=body,
+        headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+    )
+    assert response.status == 200
+    assert response.json() == {"note": "hello", "name": "a.txt", "body": "file contents"}

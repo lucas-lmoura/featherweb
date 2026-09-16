@@ -119,7 +119,12 @@ class TestClient:
         path, _, inline_query = path.partition("?")
         query = _query_string(params) or inline_query
 
-        from urllib.parse import quote
+        from urllib.parse import quote, unquote
+
+        # A server hands the application the decoded path and keeps the bytes
+        # it read in raw_path, so a %2e here has to reach the app as a dot.
+        target = self.root_path + path
+        raw_target = quote(target, safe="/%")
 
         scope: Scope = {
             "type": "http",
@@ -127,8 +132,8 @@ class TestClient:
             "http_version": "1.1",
             "method": method.upper(),
             "scheme": self.scheme,
-            "path": self.root_path + path,
-            "raw_path": quote(self.root_path + path).encode("latin-1"),
+            "path": unquote(target),
+            "raw_path": raw_target.encode("latin-1"),
             "query_string": query.encode("latin-1"),
             "root_path": self.root_path,
             "headers": [

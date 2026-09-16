@@ -38,6 +38,7 @@ __all__ = [
     "Binder",
     "Body",
     "Cookie",
+    "File",
     "Form",
     "Header",
     "Query",
@@ -97,6 +98,13 @@ class Form(_Marker):
 
     __slots__ = ()
     location = "form"
+
+
+class File(_Marker):
+    """Read this parameter from a file uploaded in a multipart body."""
+
+    __slots__ = ()
+    location = "file"
 
 
 class _Instruction:
@@ -193,6 +201,12 @@ class _FromRequest(_Instruction):
             return request.cookies.get(self.alias, MISSING)
         if location == "form":
             return _from_multi(await request.form(), self.alias, self.multiple)
+        if location == "file":
+            form = await request.form()
+            files = form.getfilelist(self.alias)
+            if not files:
+                return MISSING
+            return files if self.multiple else files[0]
         return await self._from_json_field(request)
 
     async def _from_json_field(self, request: Request) -> Any:
@@ -347,6 +361,8 @@ def _instruction_for(
         alias = marker.alias or name
     elif name in path_params:
         location, alias = "path", name
+    elif _is_upload(_collection_item(inner)):
+        location, alias = "file", name
     elif is_body_hint(inner):
         location, alias = "body", name
     else:
@@ -354,10 +370,18 @@ def _instruction_for(
     if location == "header":
         alias = alias.replace("_", "-").lower()
 
-    try:
-        validate = compile_validator(hint, where=where)
-    except UnsupportedType as exc:
-        raise RouteConfigurationError(str(exc)) from None
+    if location == "file":
+        if not _is_upload(_collection_item(inner)):
+            raise RouteConfigurationError(
+                f"{where}: parameter {name!r} is marked as a File, so it has to be "
+                f"annotated UploadFile."
+            )
+        validate = _identity  # an upload arrives as the object already
+    else:
+        try:
+            validate = compile_validator(hint, where=where)
+        except UnsupportedType as exc:
+            raise RouteConfigurationError(str(exc)) from None
 
     # ``Body()`` takes the body as it stands; ``Body("name")`` picks that one field out of it.
     if location == "body" and (marker is None or marker.alias is None):
@@ -387,6 +411,31 @@ def _instruction_for(
         default=default,
         default_factory=default_factory,
     )
+
+
+def _identity(value: Any) -> Any:
+    return value
+
+
+def _collection_item(hint: Any) -> Any:
+    """``X`` for ``list[X]``, or the hint itself when it is not a collection."""
+    from ._introspect import collection_of
+
+    collection = collection_of(hint)
+    return hint if collection is None else collection[1]
+
+
+def _is_upload(hint: Any) -> bool:
+    """Whether ``hint`` is :class:`~featherweb.multipart.UploadFile`.
+
+    The name is checked first so that an application without uploads never
+    imports the multipart machinery just to find that out.
+    """
+    if not (isinstance(hint, type) and hint.__name__ == "UploadFile"):
+        return False
+    from .multipart import UploadFile
+
+    return issubclass(hint, UploadFile)
 
 
 def _shared_safe(default: Any) -> tuple[Any, Callable[[], Any] | None]:

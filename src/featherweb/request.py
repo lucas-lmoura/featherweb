@@ -7,12 +7,15 @@ body each decode on first access and are then remembered.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from ._types import Message, Receive, Scope
 from .exceptions import HTTPError
 
-__all__ = ["Headers", "QueryParams", "Request"]
+if TYPE_CHECKING:  # imported lazily: multipart is off the package import path
+    from .multipart import MultipartLimits, UploadFile
+
+__all__ = ["FormData", "Headers", "QueryParams", "Request"]
 
 #: Buffered bodies larger than this are refused with 413; streaming is unaffected.
 DEFAULT_MAX_BODY_SIZE: Final = 1024 * 1024
@@ -95,12 +98,55 @@ class QueryParams(Mapping[str, str]):
         return f"QueryParams({self._items!r})"
 
 
+class FormData(QueryParams):
+    """A submitted form: the text fields, and the files that came with them.
+
+    It reads like the query string for the text fields, so a handler that only
+    wants those does not have to know how the body was encoded.
+    """
+
+    __slots__ = ("_files",)
+
+    def __init__(
+        self,
+        fields: Sequence[tuple[str, str]],
+        files: Sequence[tuple[str, UploadFile]],
+    ) -> None:
+        self._items = list(fields)
+        self._files = list(files)
+
+    @property
+    def files(self) -> list[tuple[str, UploadFile]]:
+        """Every uploaded file, in the order the body listed them."""
+        return list(self._files)
+
+    def getfile(self, key: str) -> UploadFile | None:
+        """The first file sent under ``key``, if there is one."""
+        for name, file in self._files:
+            if name == key:
+                return file
+        return None
+
+    def getfilelist(self, key: str) -> list[UploadFile]:
+        """Every file sent under ``key``."""
+        return [file for name, file in self._files if name == key]
+
+    async def close(self) -> None:
+        """Close every file, dropping the temporary ones."""
+        for _, file in self._files:
+            await file.close()
+
+    def __repr__(self) -> str:
+        return f"FormData({self._items!r}, {len(self._files)} files)"
+
+
 class Request:
     """One HTTP request, as the application sees it."""
 
     __slots__ = (
         "_body",
         "_cookies",
+        "_form",
         "_headers",
         "_json",
         "_max_body_size",
@@ -128,6 +174,7 @@ class Request:
         self._cookies: dict[str, str] | None = None
         self._body: bytes | None = None
         self._json: Any = _UNREAD
+        self._form: FormData | None = None
         self._stream_consumed = False
 
     # -- request line ---------------------------------------------------
@@ -230,18 +277,34 @@ class Request:
             raise HTTPError(400, f"malformed JSON body: {exc}") from exc
         return self._json
 
-    async def form(self) -> QueryParams:
-        """A ``application/x-www-form-urlencoded`` body, parsed like a query string.
+    async def form(self, *, limits: MultipartLimits | None = None) -> FormData:
+        """The submitted form, url-encoded or multipart, parsed once.
 
-        Multipart bodies arrive with file uploads, in a later phase.
+        A multipart body is read straight off the stream, so an upload never
+        has to fit in memory; the files it produces are closed for you when the
+        response goes out.
         """
+        if self._form is not None:
+            return self._form
         content_type = self.headers.get("content-type", "")
         media_type = content_type.split(";", 1)[0].strip().lower()
         if media_type == "multipart/form-data":
-            raise HTTPError(415, "multipart bodies are not supported yet")
+            from .multipart import parse_multipart
+
+            fields, files = await parse_multipart(
+                self.stream(), content_type, **({"limits": limits} if limits else {})
+            )
+            self._form = FormData(fields, files)
+            return self._form
         if media_type not in ("", "application/x-www-form-urlencoded"):
             raise HTTPError(415, f"unsupported content type {media_type!r}")
-        return QueryParams(await self.body())
+        self._form = FormData(QueryParams(await self.body()).multi_items(), ())
+        return self._form
+
+    async def close(self) -> None:
+        """Release anything the request is holding, such as spooled uploads."""
+        if self._form is not None:
+            await self._form.close()
 
     def __repr__(self) -> str:
         return f"<Request {self.method} {self.path}>"

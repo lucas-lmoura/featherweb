@@ -19,7 +19,7 @@ from .middleware import ORDER_ATTR, MiddlewareCallable, Next, build_chain
 from .params import Binder, compile_binder
 from .request import DEFAULT_MAX_BODY_SIZE, ClientDisconnected, Request
 from .response import Response
-from .routing import Router, normalize_path, path_param_names
+from .routing import RouteConflictError, Router, normalize_path, path_param_names
 from .serialization import Serializer, compile_serializer, resolve_return_hint, unwrap_response
 
 __all__ = ["App"]
@@ -27,6 +27,8 @@ __all__ = ["App"]
 logger: Final = logging.getLogger("featherweb")
 
 type Hook = Callable[[], Any]
+#: What :meth:`App.mount` accepts: the request plus the path below the mount.
+type Mounted = Callable[[Request, str], Awaitable[Response[Any]]]
 
 
 class _ErrorHandler:
@@ -96,6 +98,9 @@ class App:
         self._startup_hooks: list[Hook] = list(on_startup)
         self._shutdown_hooks: list[Hook] = list(on_shutdown)
         self._chain: Next | None = None
+        #: Prefixes handed to a sub-application, longest first so the most
+        #: specific mount wins.
+        self._mounts: list[tuple[str, Mounted]] = []
         self.register(*controllers, *middlewares)
 
     # -- registration ---------------------------------------------------
@@ -108,6 +113,21 @@ class App:
         """
         for target in targets:
             self._register(target)
+
+    def mount(self, prefix: str, application: Mounted) -> None:
+        """Hand every path under ``prefix`` to ``application``.
+
+        The mounted application is called with the request and the rest of the
+        path, and answers with a response, so the middlewares, the exception
+        handlers and HEAD all keep working as they do for a controller.
+        """
+        prefix = normalize_path(prefix)
+        if prefix == "/":
+            raise ValueError("a mount needs a prefix of its own, not '/'")
+        if any(existing == prefix for existing, _ in self._mounts):
+            raise RouteConflictError(f"{prefix} is already mounted")
+        self._mounts.append((prefix, application))
+        self._mounts.sort(key=lambda item: len(item[0]), reverse=True)
 
     def scan(self, package: str) -> None:
         """Import ``package`` recursively and register everything marked in it."""
@@ -232,15 +252,11 @@ class App:
             response = await chain(request)
         except Exception as exc:  # raised by a middleware, or by our own dispatch
             response = await self._error_response(exc, request, None)
-        body = response.render()
-        await send(
-            {
-                "type": "http.response.start",
-                "status": response.status,
-                "headers": response.raw_headers(),
-            }
-        )
-        await send({"type": "http.response.body", "body": body})
+        try:
+            await response.send(send)
+        finally:
+            # Spooled uploads hold a temporary file each; the request is over.
+            await request.close()
 
     async def _handle_lifespan(self, receive: Receive, send: Send) -> None:
         while True:
@@ -265,6 +281,10 @@ class App:
     async def _dispatch(self, request: Request) -> Response[Any]:
         endpoint: _Endpoint | None = None
         try:
+            mounted = self._mounted(request)
+            if mounted is not None:
+                application, relative = mounted
+                return await application(request, relative)
             endpoint, params = self._resolve(request)
             request.path_params = params
             arguments = await endpoint.binder.build(request, params)
@@ -273,6 +293,18 @@ class App:
         except Exception as exc:
             errors = endpoint.errors if endpoint is not None else None
             return await self._error_response(exc, request, errors)
+
+    def _mounted(self, request: Request) -> tuple[Mounted, str] | None:
+        """The mount that claims this path, and what is left of the path below it."""
+        if not self._mounts:
+            return None
+        path = _route_path(request)
+        for prefix, application in self._mounts:
+            if path == prefix:
+                return application, ""
+            if path.startswith(prefix) and path[len(prefix)] == "/":
+                return application, path[len(prefix) + 1 :]
+        return None
 
     def _resolve(self, request: Request) -> tuple[_Endpoint, Mapping[str, Any]]:
         resolved = self._router.resolve(_route_path(request))

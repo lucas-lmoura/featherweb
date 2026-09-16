@@ -168,11 +168,34 @@ async def test_urlencoded_form() -> None:
     assert form["b"] == "x"
 
 
-async def test_multipart_is_not_supported_yet() -> None:
-    request = make_request(headers={"content-type": "multipart/form-data; boundary=x"})
-    with pytest.raises(HTTPError) as info:
-        await request.form()
-    assert info.value.status == 415
+async def test_multipart_form_carries_fields_and_files() -> None:
+    body = (
+        b"--x\r\n"
+        b'Content-Disposition: form-data; name="who"\r\n\r\n'
+        b"ada\r\n"
+        b"--x\r\n"
+        b'Content-Disposition: form-data; name="doc"; filename="a.txt"\r\n'
+        b"Content-Type: text/plain\r\n\r\n"
+        b"hello\r\n"
+        b"--x--\r\n"
+    )
+    request = make_request(
+        chunks=[body], headers={"content-type": "multipart/form-data; boundary=x"}
+    )
+    form = await request.form()
+    assert form["who"] == "ada"
+    upload = form.getfile("doc")
+    assert upload is not None
+    assert (upload.filename, upload.content_type, upload.size) == ("a.txt", "text/plain", 5)
+    assert await upload.read() == b"hello"
+    await request.close()
+
+
+async def test_a_form_is_parsed_once() -> None:
+    request = make_request(
+        chunks=[b"a=1"], headers={"content-type": "application/x-www-form-urlencoded"}
+    )
+    assert await request.form() is await request.form()
 
 
 async def test_form_refuses_other_content_types() -> None:

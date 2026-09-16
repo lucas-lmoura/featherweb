@@ -146,6 +146,9 @@ class GZip:
         _add_vary(response, "Accept-Encoding")
         if "content-encoding" in response.headers or response.status in (204, 304):
             return response
+        if not response.buffered:
+            # Draining a streamed body here would undo the point of streaming it.
+            return response
         body = response.render()
         if len(body) < self.minimum_size:
             return response
