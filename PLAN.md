@@ -18,6 +18,7 @@
 
 - Zero dependências obrigatórias.
 - Import do pacote < 15 ms (`python -X importtime -c "import featherweb"`); módulos pesados (multipart, websocket, staticfiles, auth) importados sob demanda.
+  Medido em 2026-09-15, com a Fase 2 pronta (Windows, Python 3.12): **29 ms**, dos quais ~19 ms são o `logging` da stdlib nessa máquina; `dataclasses` e `inspect` já ficaram fora do caminho de import. Fechar a diferença é trabalho da Fase 7.
 - Núcleo com ~3.500 linhas ou menos (autenticação incluída).
 - Memória ociosa < 20 MB por processo.
 - Hello world / JSON com throughput na faixa de Starlette+uvicorn (benchmark reprodutível em `benchmarks/`).
@@ -294,8 +295,8 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 |---|---|---|---|
 | 0. Setup | `git init`, `uv init --lib`, ruff/pyright/pytest, CI | `uv run pytest` passa no CI | ✅ concluída localmente (CI aguarda o remoto) |
 | 1. Servidor HTTP | `parser.py`, `protocol.py`, `runner.py` mínimos | App ASGI "cru" responde; keep-alive e pipelining testados; casos de smuggling rejeitados | ✅ concluída |
-| 2. Núcleo do framework | `App`, `Router`, controllers (`@Route`, verbos, `scan`), `Request`, `Response`, `HTTPError`, `@ExceptionHandler`/`@ControllerAdvice`, `@Middleware`, lifespan, CLI, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn | ⏭️ próxima |
-| 3. Type hints | `params.py` (entrada) + `serialization.py` (retorno tipado, `Response[T]`), 422 | Regras das seções 5.3 e 5.4 cobertas por testes | pendente |
+| 2. Núcleo do framework | `App`, `Router`, controllers (`@Route`, verbos, `scan`), `Request`, `Response`, `HTTPError`, `@ExceptionHandler`/`@ControllerAdvice`, `@Middleware`, lifespan, CLI, `TestClient` | Mesma suíte passa no servidor próprio e no uvicorn | ✅ concluída (entrada ainda limitada a path params e tipos do framework; a inferência completa da seção 5.3 é a Fase 3) |
+| 3. Type hints | `params.py` (entrada) + `serialization.py` (retorno tipado, `Response[T]`), 422 | Regras das seções 5.3 e 5.4 cobertas por testes | ⏭️ próxima |
 | 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | pendente |
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | pendente |
 | 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | pendente |

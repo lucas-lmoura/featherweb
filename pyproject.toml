@@ -9,6 +9,9 @@ authors = [
 requires-python = ">=3.12"
 dependencies = []
 
+[project.scripts]
+featherweb = "featherweb.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -20,6 +23,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.7",
+    "uvicorn>=0.53.0",
 ]
 
 [tool.hatch.version]

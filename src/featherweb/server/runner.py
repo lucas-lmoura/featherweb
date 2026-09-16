@@ -13,7 +13,7 @@ from collections.abc import Generator
 from typing import Any, Final, cast
 
 from .._compat import loop_factory
-from .._types import ASGIApp
+from .._types import ASGIApp, Message, Scope
 from .protocol import HttpProtocol, ServerConfig, ServerState
 
 __all__ = ["Server", "run", "serve"]
@@ -37,6 +37,8 @@ class Server:
         backlog: int = 2048,
         reuse_port: bool = False,
         shutdown_timeout: float = 10.0,
+        lifespan: bool = True,
+        lifespan_timeout: float = 10.0,
     ) -> None:
         self.app = app
         self.host = host
@@ -46,6 +48,7 @@ class Server:
         self.backlog = backlog
         self.reuse_port = reuse_port
         self.shutdown_timeout = shutdown_timeout
+        self.lifespan = _Lifespan(app, lifespan_timeout) if lifespan else None
         self.state = ServerState()
         self._server: asyncio.Server | None = None
         self._bound_port: int | None = None
@@ -62,6 +65,8 @@ class Server:
         loop = asyncio.get_running_loop()
         self._loop = loop
         self._shutdown_event = asyncio.Event()
+        if self.lifespan is not None:
+            await self.lifespan.startup()  # nothing is accepted until the app is ready
         self._server = await loop.create_server(
             lambda: HttpProtocol(self.app, self.config, state=self.state),
             host=self.host,
@@ -120,6 +125,8 @@ class Server:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
+        if self.lifespan is not None:
+            await self.lifespan.shutdown()
         logger.info("featherweb stopped")
 
     # -- introspection --------------------------------------------------
@@ -198,3 +205,72 @@ def run(app: ASGIApp, **kwargs: Any) -> None:
             runner.run(server.serve())
         except KeyboardInterrupt:
             runner.run(server.shutdown())
+
+
+class _Lifespan:
+    """Runs an application's lifespan protocol around the server's own.
+
+    Applications that do not implement it simply fail on the lifespan scope;
+    that is detected once, at startup, and the server carries on without it.
+    """
+
+    def __init__(self, app: ASGIApp, timeout: float = 10.0) -> None:
+        self.app = app
+        self.timeout = timeout
+        self.supported = False
+        self._events: asyncio.Queue[Message] = asyncio.Queue()
+        self._replies: asyncio.Queue[Message] = asyncio.Queue()
+        self._task: asyncio.Task[None] | None = None
+
+    async def startup(self) -> None:
+        scope: Scope = {"type": "lifespan", "asgi": {"version": "3.0", "spec_version": "2.0"}}
+        self._task = asyncio.create_task(self._run(scope))
+        await self._events.put({"type": "lifespan.startup"})
+        reply = await self._reply()
+        if reply is None:
+            logger.debug("the application does not implement the lifespan protocol")
+            return
+        if reply["type"] == "lifespan.startup.failed":
+            await self._finish()
+            raise RuntimeError(f"application startup failed: {reply.get('message') or ''}")
+        self.supported = True
+
+    async def shutdown(self) -> None:
+        if self.supported:
+            await self._events.put({"type": "lifespan.shutdown"})
+            reply = await self._reply()
+            if reply is not None and reply["type"] == "lifespan.shutdown.failed":
+                logger.error("application shutdown failed: %s", reply.get("message") or "")
+        await self._finish()
+
+    async def _run(self, scope: Scope) -> None:
+        try:
+            await self.app(scope, self._events.get, self._replies.put)
+        except Exception:
+            logger.debug("lifespan is not supported by this application", exc_info=True)
+
+    async def _reply(self) -> Message | None:
+        """The next lifespan message, or ``None`` if the application gave up."""
+        task = self._task
+        if task is None:
+            return None
+        waiter = asyncio.ensure_future(self._replies.get())
+        done, _ = await asyncio.wait(
+            {waiter, task}, timeout=self.timeout, return_when=asyncio.FIRST_COMPLETED
+        )
+        if waiter in done:
+            return waiter.result()
+        waiter.cancel()
+        if task not in done:
+            logger.warning("the application did not answer the lifespan message in time")
+        return None
+
+    async def _finish(self) -> None:
+        task, self._task = self._task, None
+        if task is None:
+            return
+        if not task.done():
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        self.supported = False
