@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>featherweb demo</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --fg: #1a1a18; --muted: #6b6b66; --line: #e2e2dd;
+    --card: #ffffff; --accent: #2f6f4f; --warn: #a2522b; --code: #f3f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --fg: #e8e8e4; --muted: #9a9a94; --line: #2c2e33;
+      --card: #1d1f23; --accent: #7fbf9a; --warn: #d9925f; --code: #111214;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 .2rem; letter-spacing: -.01em; }
+  h2 { font-size: .95rem; margin: 2.2rem 0 .7rem; text-transform: uppercase;
+       letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+  p.lede { margin: 0 0 .4rem; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 1rem; margin-bottom: .8rem; }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  button {
+    font: inherit; font-size: .88rem; padding: .4rem .75rem; cursor: pointer;
+    background: var(--card); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: .9; color: #fff; }
+  input, textarea {
+    font: inherit; font-size: .88rem; padding: .4rem .55rem; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  }
+  input[type=text], input[type=number] { width: 9rem; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre {
+    background: var(--code); border: 1px solid var(--line); border-radius: 8px;
+    padding: .7rem .8rem; overflow: auto; max-height: 20rem; font-size: .82rem;
+    margin: .6rem 0 0; white-space: pre-wrap; word-break: break-word;
+  }
+  .meta { font-size: .78rem; color: var(--muted); margin-top: .45rem; }
+  .verb { font-size: .72rem; font-weight: 700; padding: .12rem .4rem; border-radius: 4px;
+          background: var(--code); color: var(--muted); letter-spacing: .04em; }
+  label { font-size: .82rem; color: var(--muted); }
+  .log { height: 11rem; overflow-y: auto; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .82rem;
+           border-top: 1px solid var(--line); padding-top: 1rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>featherweb</h1>
+  <p class="lede">Every button below hits the running server. Responses land in the panel under each card.</p>
+  <p class="meta">Status: <span id="health">checking…</span></p>
+
+  <h2>Input and output from type hints</h2>
+  <div class="card">
+    <div class="row">
+      <span class="verb">GET</span><code>/api/tasks</code>
+      <button data-get="/api/tasks">all</button>
+      <button data-get="/api/tasks?done=true">?done=true</button>
+      <button data-get="/api/tasks?limit=1">?limit=1</button>
+      <button data-get="/api/tasks?limit=nope">?limit=nope → 422</button>
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <span class="verb">GET</span><code>/api/tasks/{id}</code>
+      <button data-get="/api/tasks/1">id 1</button>
+      <button data-get="/api/tasks/999">id 999 → 404</button>
+      <button data-get="/api/tasks/abc">id abc → 404</button>
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <span class="verb">GET</span><code>/api/tasks/echo/headers</code>
+      <button data-get="/api/tasks/echo/headers?perPage=5">?perPage=5</button>
+    </div>
+    <pre id="out-tasks">–</pre>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="verb">POST</span><code>/api/tasks</code>
+      <input id="new-title" type="text" value="try featherweb" aria-label="title">
+      <input id="new-tags" type="text" value="demo,http" aria-label="tags">
+      <button class="primary" id="create">create → 201</button>
+      <button id="create-bad">send {} → 422</button>
+    </div>
+    <p class="meta">The handler takes a dataclass, so the body is validated against it.</p>
+    <pre id="out-create">–</pre>
+  </div>
+
+  <h2>Streaming and files</h2>
+  <div class="card">
+    <div class="row">
+      <span class="verb">GET</span><code>/api/files/stream</code>
+      <button id="stream">read it chunk by chunk</button>
+      <label>lines <input id="stream-lines" type="number" value="5" min="1" max="50" style="width:4.5rem"></label>
+    </div>
+    <p class="meta">Chunked: the lines appear one at a time, not all at the end.</p>
+    <pre id="out-stream">–</pre>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="verb">GET</span><code>/api/files/download</code>
+      <button id="download">fetch (see the headers)</button>
+      <button id="download-304">again with If-None-Match → 304</button>
+      <button id="download-range">Range: bytes=0-63 → 206</button>
+      <a href="/api/files/download" download><button>save it</button></a>
+    </div>
+    <pre id="out-download">–</pre>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="verb">POST</span><code>/api/files/upload</code>
+      <input id="upload-file" type="file" aria-label="file">
+      <input id="upload-note" type="text" value="hello" aria-label="note">
+      <button class="primary" id="upload">upload</button>
+    </div>
+    <p class="meta">Parsed as it arrives and spooled to disk past 1 MB — try a large file.</p>
+    <pre id="out-upload">–</pre>
+  </div>
+
+  <h2>WebSocket</h2>
+  <div class="card">
+    <div class="row">
+      <code id="ws-url">/ws/echo</code>
+      <button class="primary" id="ws-connect">connect</button>
+      <button id="ws-disconnect">disconnect</button>
+      <button id="ws-room">/ws/room/lobby</button>
+      <input id="ws-input" type="text" value="hello" aria-label="message" style="width:12rem">
+      <button id="ws-send">send</button>
+    </div>
+    <pre id="out-ws" class="log">not connected</pre>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <code>/ws/clock</code>
+      <button id="clock-start">start</button>
+      <button id="clock-stop">stop</button>
+      <span class="meta">the server pushes without being asked</span>
+    </div>
+    <pre id="out-clock">–</pre>
+  </div>
+
+  <h2>Errors</h2>
+  <div class="card">
+    <div class="row">
+      <button data-get="/api/errors/http/418">418 from HTTPError</button>
+      <button data-get="/api/errors/http/403">403</button>
+      <button data-get="/api/errors/boom">unhandled → 500</button>
+      <button data-get="/api/nowhere">no route → 404</button>
+      <button data-post-empty="/api/tasks/1">wrong method → 405</button>
+    </div>
+    <pre id="out-errors">–</pre>
+  </div>
+
+  <h2>Static files</h2>
+  <div class="card">
+    <div class="row">
+      <button data-get="/static/sample.txt" data-target="out-static">/static/sample.txt</button>
+      <button data-get="/static/../app.py" data-target="out-static">traversal → 404</button>
+      <button data-get="/static/%2e%2e/app.py" data-target="out-static">encoded traversal → 404</button>
+    </div>
+    <pre id="out-static">–</pre>
+  </div>
+
+  <footer>
+    Served by featherweb's own HTTP/1.1 server. The same app runs under uvicorn:
+    <code>uvicorn examples.demo.app:app</code>
+  </footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function show(target, status, headers, body) {
+  const interesting = ["content-type", "content-length", "content-range", "etag",
+                       "last-modified", "cache-control", "content-encoding", "allow",
+                       "x-elapsed-ms"];
+  const shown = interesting
+    .map((name) => [name, headers.get(name)])
+    .filter(([, value]) => value)
+    .map(([name, value]) => `${name}: ${value}`)
+    .join("\n");
+  $(target).textContent = `${status}\n${shown}\n\n${body}`;
+}
+
+async function call(path, target, options = {}) {
+  $(target).textContent = "…";
+  try {
+    const response = await fetch(path, options);
+    const text = await response.text();
+    let body = text;
+    try { body = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+    show(target, `HTTP ${response.status} ${response.statusText}`, response.headers, body.slice(0, 4000));
+  } catch (error) {
+    $(target).textContent = `request failed: ${error}`;
+  }
+}
+
+function targetFor(button) {
+  if (button.dataset.target) return button.dataset.target;
+  const path = button.dataset.get || button.dataset.postEmpty || "";
+  if (path.startsWith("/api/errors") || path === "/api/nowhere") return "out-errors";
+  if (path.startsWith("/api/tasks/1") && button.dataset.postEmpty) return "out-errors";
+  return "out-tasks";
+}
+
+document.querySelectorAll("[data-get]").forEach((button) => {
+  button.addEventListener("click", () => call(button.dataset.get, targetFor(button)));
+});
+document.querySelectorAll("[data-post-empty]").forEach((button) => {
+  button.addEventListener("click", () =>
+    call(button.dataset.postEmpty, targetFor(button), { method: "POST" }));
+});
+
+$("create").addEventListener("click", () => {
+  const tags = $("new-tags").value.split(",").map((t) => t.trim()).filter(Boolean);
+  call("/api/tasks", "out-create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title: $("new-title").value, tags, colour: "green" }),
+  });
+});
+
+$("create-bad").addEventListener("click", () => {
+  call("/api/tasks", "out-create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+});
+
+$("stream").addEventListener("click", async () => {
+  const out = $("out-stream");
+  out.textContent = "";
+  const response = await fetch(`/api/files/stream?lines=${$("stream-lines").value}&delay=0.4`);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const started = performance.now();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const at = ((performance.now() - started) / 1000).toFixed(1);
+    out.textContent += `+${at}s  ${decoder.decode(value, { stream: true })}`;
+    out.scrollTop = out.scrollHeight;
+  }
+  out.textContent += "— done";
+});
+
+let lastEtag = null;
+$("download").addEventListener("click", async () => {
+  const response = await fetch("/api/files/download");
+  lastEtag = response.headers.get("etag");
+  const text = await response.text();
+  show("out-download", `HTTP ${response.status}`, response.headers, text.slice(0, 600) + "\n…");
+});
+$("download-304").addEventListener("click", async () => {
+  if (!lastEtag) { $("out-download").textContent = "fetch it once first"; return; }
+  call("/api/files/download", "out-download", { headers: { "if-none-match": lastEtag } });
+});
+$("download-range").addEventListener("click", () => {
+  call("/api/files/download", "out-download", { headers: { range: "bytes=0-63" } });
+});
+
+$("upload").addEventListener("click", async () => {
+  const file = $("upload-file").files[0];
+  if (!file) { $("out-upload").textContent = "choose a file first"; return; }
+  const form = new FormData();
+  form.append("note", $("upload-note").value);
+  form.append("document", file);
+  call("/api/files/upload", "out-upload", { method: "POST", body: form });
+});
+
+let socket = null;
+function wsLog(line) {
+  const out = $("out-ws");
+  if (out.textContent === "not connected") out.textContent = "";
+  out.textContent += line + "\n";
+  out.scrollTop = out.scrollHeight;
+}
+function openSocket(path) {
+  if (socket) socket.close();
+  $("ws-url").textContent = path;
+  const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${path}`;
+  socket = new WebSocket(url);
+  socket.onopen = () => wsLog(`● open ${path}`);
+  socket.onmessage = (event) => wsLog(`← ${event.data}`);
+  socket.onclose = (event) => wsLog(`○ closed (code ${event.code}${event.reason ? ", " + event.reason : ""})`);
+  socket.onerror = () => wsLog("× error");
+}
+$("ws-connect").addEventListener("click", () => openSocket("/ws/echo"));
+$("ws-room").addEventListener("click", () => openSocket("/ws/room/lobby"));
+$("ws-disconnect").addEventListener("click", () => socket && socket.close(1000, "bye"));
+$("ws-send").addEventListener("click", () => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) { wsLog("× not connected"); return; }
+  socket.send($("ws-input").value);
+  wsLog(`→ ${$("ws-input").value}`);
+});
+$("ws-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") $("ws-send").click();
+});
+
+let clock = null;
+$("clock-start").addEventListener("click", () => {
+  if (clock) return;
+  clock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/clock`);
+  clock.onmessage = (event) => { $("out-clock").textContent = event.data; };
+  clock.onclose = () => { $("out-clock").textContent += "  (stopped)"; clock = null; };
+});
+$("clock-stop").addEventListener("click", () => clock && clock.close());
+
+fetch("/health")
+  .then((response) => response.json())
+  .then((data) => { $("health").textContent = `${data.status}, server time ${data.time}`; })
+  .catch(() => { $("health").textContent = "unreachable"; });
+</script>
+</body>
+</html>
