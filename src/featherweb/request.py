@@ -15,7 +15,7 @@ from .exceptions import HTTPError
 if TYPE_CHECKING:  # imported lazily: multipart is off the package import path
     from .multipart import MultipartLimits, UploadFile
 
-__all__ = ["FormData", "Headers", "QueryParams", "Request"]
+__all__ = ["Connection", "FormData", "Headers", "QueryParams", "Request"]
 
 #: Buffered bodies larger than this are refused with 413; streaming is unaffected.
 DEFAULT_MAX_BODY_SIZE: Final = 1024 * 1024
@@ -140,48 +140,21 @@ class FormData(QueryParams):
         return f"FormData({self._items!r}, {len(self._files)} files)"
 
 
-class Request:
-    """One HTTP request, as the application sees it."""
+class Connection:
+    """What an HTTP request and a WebSocket connection have in common.
 
-    __slots__ = (
-        "_body",
-        "_cookies",
-        "_form",
-        "_headers",
-        "_json",
-        "_max_body_size",
-        "_query",
-        "_receive",
-        "_stream_consumed",
-        "path_params",
-        "scope",
-    )
+    Both arrive as an ASGI scope with a path, headers, a query string and
+    cookies, and all of those are parsed only when something asks for them.
+    """
 
-    def __init__(
-        self,
-        scope: Scope,
-        receive: Receive,
-        *,
-        max_body_size: int = DEFAULT_MAX_BODY_SIZE,
-        path_params: Mapping[str, Any] | None = None,
-    ) -> None:
+    __slots__ = ("_cookies", "_headers", "_query", "path_params", "scope")
+
+    def __init__(self, scope: Scope, *, path_params: Mapping[str, Any] | None = None) -> None:
         self.scope = scope
         self.path_params: Mapping[str, Any] = path_params or {}
-        self._receive = receive
-        self._max_body_size = max_body_size
         self._headers: Headers | None = None
         self._query: QueryParams | None = None
         self._cookies: dict[str, str] | None = None
-        self._body: bytes | None = None
-        self._json: Any = _UNREAD
-        self._form: FormData | None = None
-        self._stream_consumed = False
-
-    # -- request line ---------------------------------------------------
-
-    @property
-    def method(self) -> str:
-        return str(self.scope["method"])
 
     @property
     def path(self) -> str:
@@ -190,10 +163,6 @@ class Request:
     @property
     def scheme(self) -> str:
         return str(self.scope.get("scheme", "http"))
-
-    @property
-    def http_version(self) -> str:
-        return str(self.scope.get("http_version", "1.1"))
 
     @property
     def client(self) -> tuple[str, int] | None:
@@ -207,8 +176,6 @@ class Request:
         query = self.scope.get("query_string", b"")
         suffix = "?" + bytes(query).decode("latin-1") if query else ""
         return f"{self.scheme}://{host}{self.path}{suffix}"
-
-    # -- lazily parsed --------------------------------------------------
 
     @property
     def headers(self) -> Headers:
@@ -227,6 +194,45 @@ class Request:
         if self._cookies is None:
             self._cookies = _parse_cookies(self.headers.getlist("cookie"))
         return self._cookies
+
+
+class Request(Connection):
+    """One HTTP request, as the application sees it."""
+
+    __slots__ = (
+        "_body",
+        "_form",
+        "_json",
+        "_max_body_size",
+        "_receive",
+        "_stream_consumed",
+    )
+
+    def __init__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        *,
+        max_body_size: int = DEFAULT_MAX_BODY_SIZE,
+        path_params: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(scope, path_params=path_params)
+        self._receive = receive
+        self._max_body_size = max_body_size
+        self._body: bytes | None = None
+        self._json: Any = _UNREAD
+        self._form: FormData | None = None
+        self._stream_consumed = False
+
+    # -- request line ---------------------------------------------------
+
+    @property
+    def method(self) -> str:
+        return str(self.scope["method"])
+
+    @property
+    def http_version(self) -> str:
+        return str(self.scope.get("http_version", "1.1"))
 
     # -- body -----------------------------------------------------------
 

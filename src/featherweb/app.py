@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from types import ModuleType
-from typing import Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from ._types import Message, Receive, Scope, Send
-from .controllers import PREFIX_ATTR, ROUTES_ATTR, RouteMark
+from .controllers import PREFIX_ATTR, ROUTES_ATTR, WEBSOCKET, RouteMark
 from .exceptions import ADVICE_ATTR, HANDLES_ATTR, HTTPError
 from .middleware import ORDER_ATTR, MiddlewareCallable, Next, build_chain
 from .params import Binder, compile_binder
@@ -21,6 +21,9 @@ from .request import DEFAULT_MAX_BODY_SIZE, ClientDisconnected, Request
 from .response import Response
 from .routing import RouteConflictError, Router, normalize_path, path_param_names
 from .serialization import Serializer, compile_serializer, resolve_return_hint, unwrap_response
+
+if TYPE_CHECKING:  # websocket is imported on demand, not at package import
+    from .websocket import WebSocket
 
 __all__ = ["App"]
 
@@ -194,7 +197,14 @@ class App:
             serializer = _serializer_for(bound)
             for mark in marks:
                 path = _join(prefix, mark.path)
-                binder = compile_binder(bound, path_params=path_param_names(path), where=where)
+                names = path_param_names(path)
+                if mark.method == WEBSOCKET:
+                    socket_binder = compile_binder(bound, path_params=names, where=where)
+                    self._router.add(
+                        WEBSOCKET, path, _Endpoint(bound, socket_binder, 0, where, errors, None)
+                    )
+                    continue
+                binder = compile_binder(bound, path_params=names, where=where)
                 endpoint = _Endpoint(bound, binder, mark.status, where, errors, serializer)
                 self._router.add(mark.method, path, endpoint)
 
@@ -239,7 +249,7 @@ class App:
         elif scope_type == "lifespan":
             await self._handle_lifespan(receive, send)
         elif scope_type == "websocket":
-            await send({"type": "websocket.close", "code": 1001})
+            await self._handle_websocket(scope, receive, send)
         else:
             raise RuntimeError(f"unsupported ASGI scope type {scope_type!r}")
 
@@ -257,6 +267,32 @@ class App:
         finally:
             # Spooled uploads hold a temporary file each; the request is over.
             await request.close()
+
+    async def _handle_websocket(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Hand the connection to its handler, which owns it until it returns.
+
+        There is no response to build here and no middleware to run: those are
+        written against request-in, response-out, which a socket is not.
+        """
+        from .websocket import WebSocket, WebSocketDisconnect
+
+        resolved = self._router.resolve(normalize_path(str(scope.get("path", "/"))))
+        endpoint = None if resolved is None else resolved[0].get(WEBSOCKET)
+        if endpoint is None:
+            # Never accepted, which ASGI turns into a refused handshake.
+            await send({"type": "websocket.close", "code": 1000})
+            return
+        socket = WebSocket(scope, receive, send, path_params=resolved[1] if resolved else {})
+        try:
+            arguments = await endpoint.binder.build_websocket(socket)
+            await endpoint.handler(**arguments)
+        except WebSocketDisconnect:
+            pass  # the client left mid-handler, which is how a socket usually ends
+        except Exception:
+            logger.exception("websocket handler %s failed", endpoint.name)
+            await _close_quietly(socket, 1011)  # RFC 6455: an unexpected condition
+        else:
+            await _close_quietly(socket)
 
     async def _handle_lifespan(self, receive: Receive, send: Send) -> None:
         while True:
@@ -384,6 +420,14 @@ class App:
 
     def __repr__(self) -> str:
         return f"<App {len(self._middlewares)} middlewares>"
+
+
+async def _close_quietly(socket: WebSocket, code: int = 1000) -> None:
+    """Close a socket the handler left open, ignoring one that already went."""
+    try:
+        await socket.close(code)
+    except Exception:  # the connection is gone; there is nothing left to say
+        logger.debug("closing an already broken websocket", exc_info=True)
 
 
 def _serializer_for(handler: Callable[..., Any]) -> Serializer | None:

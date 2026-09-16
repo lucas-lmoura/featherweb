@@ -20,7 +20,12 @@ __all__ = [
     "Put",
     "Route",
     "RouteMark",
+    "Ws",
 ]
+
+#: The router keys WebSocket handlers under this instead of an HTTP verb; no
+#: real request can claim it, so the two never collide.
+WEBSOCKET: Final = "WEBSOCKET"
 
 #: Attribute where the verb decorators record what they matched.
 ROUTES_ATTR: Final = "__featherweb_routes__"
@@ -171,3 +176,30 @@ class Head(_Verb):
 
     __slots__ = ()
     method = "HEAD"
+
+
+class Ws(_Verb):
+    """Serve a WebSocket on this path.
+
+    The handler is given the :class:`~featherweb.websocket.WebSocket` and owns
+    the connection until it returns::
+
+        @Ws("/echo")
+        async def echo(self, ws: WebSocket) -> None:
+            await ws.accept()
+            async for message in ws.iter_text():
+                await ws.send_text(message)
+
+    There is no status to declare, so ``status`` is not accepted.
+    """
+
+    __slots__ = ()
+    method = WEBSOCKET
+
+    @overload
+    def __new__(cls, path: _HandlerT, /) -> _HandlerT: ...
+    @overload
+    def __new__(cls, path: str = "", /) -> Callable[[_HandlerT], _HandlerT]: ...
+
+    def __new__(cls, path: Any = "", /) -> Any:
+        return super().__new__(cls, path)

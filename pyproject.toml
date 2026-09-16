@@ -24,6 +24,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.7",
     "uvicorn>=0.53.0",
+    "websockets>=17.1",
 ]
 
 [tool.hatch.version]

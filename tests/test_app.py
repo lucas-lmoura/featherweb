@@ -327,7 +327,8 @@ async def test_http_error_headers_reach_the_response() -> None:
 # -- ASGI edges -------------------------------------------------------------
 
 
-async def test_websocket_scope_is_closed_politely() -> None:
+async def test_a_websocket_on_a_path_without_one_is_refused() -> None:
+    """A path that only answers HTTP never accepts, which ASGI reads as a refusal."""
     app = App(controllers=[ThingController])
     sent: list[dict[str, Any]] = []
 
@@ -338,7 +339,7 @@ async def test_websocket_scope_is_closed_politely() -> None:
         sent.append(dict(message))
 
     await app({"type": "websocket", "path": "/things"}, receive, send)
-    assert sent == [{"type": "websocket.close", "code": 1001}]
+    assert sent == [{"type": "websocket.close", "code": 1000}]
 
 
 async def test_unknown_scope_type_is_refused() -> None:

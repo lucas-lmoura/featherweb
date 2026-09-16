@@ -25,6 +25,7 @@ from .parser import (
     ParserError,
     RequestHead,
 )
+from .ws_protocol import WebSocketCycle, is_upgrade, subprotocols_of
 
 __all__ = ["HttpProtocol", "RequestCycle", "ServerConfig", "ServerState"]
 
@@ -109,6 +110,8 @@ class ServerConfig:
     server_header: bytes | None = b"featherweb"
     date_header: bool = True
     root_path: str = ""
+    #: Ceiling on one assembled WebSocket message.
+    max_message_size: int = 16 * 1024 * 1024
 
 
 class ServerState:
@@ -159,6 +162,9 @@ class HttpProtocol(asyncio.Protocol):
         self._parser = HttpParser(self.config.limits)
         self._transport: asyncio.Transport | None = None
         self._cycle: RequestCycle | None = None
+        #: Set once a request has been upgraded; from then on the bytes on this
+        #: connection are frames, not requests.
+        self._websocket: WebSocketCycle | None = None
         self._timer: asyncio.TimerHandle | None = None
         self._read_paused = False
         self._writable = asyncio.Event()
@@ -183,6 +189,9 @@ class HttpProtocol(asyncio.Protocol):
         self._start_timer(self.config.keep_alive_timeout, self._on_idle_timeout)
 
     def data_received(self, data: bytes) -> None:
+        if self._websocket is not None:
+            self._websocket.feed_data(data)
+            return
         if self._cycle is None:
             # A request is starting: slowloris gets the header timeout, not the idle one.
             self._start_timer(self.config.header_timeout, self._on_header_timeout)
@@ -207,6 +216,8 @@ class HttpProtocol(asyncio.Protocol):
         self.state.discard(self)
         self._transport = None
         self._writable.set()
+        if self._websocket is not None:
+            self._websocket.on_disconnect()
         if self._cycle is not None:
             self._cycle.on_disconnect()
 
@@ -272,11 +283,36 @@ class HttpProtocol(asyncio.Protocol):
 
     def _begin_request(self, head: RequestHead) -> None:
         self._cancel_timer()
+        if is_upgrade(head):
+            self._begin_websocket(head)
+            return
         cycle = RequestCycle(self, head, self._build_scope(head))
         self._cycle = cycle
         task = self._loop.create_task(cycle.run(self.app))
         self.state.tasks.add(task)
         task.add_done_callback(self.state.tasks.discard)
+
+    def _begin_websocket(self, head: RequestHead) -> None:
+        """Hand the connection over to the frame layer for good."""
+        cycle = WebSocketCycle(
+            self,
+            head,
+            self._build_websocket_scope(head),
+            max_message_size=self.config.max_message_size,
+        )
+        self._websocket = cycle
+        self._closing = True  # there is no keep-alive after an upgrade
+        task = self._loop.create_task(cycle.run(self.app))
+        self.state.tasks.add(task)
+        task.add_done_callback(self.state.tasks.discard)
+
+    def _build_websocket_scope(self, head: RequestHead) -> Scope:
+        scope = self._build_scope(head)
+        scope["type"] = "websocket"
+        scope["scheme"] = "wss" if self._scheme == "https" else "ws"
+        scope["subprotocols"] = subprotocols_of(head)
+        del scope["method"]
+        return scope
 
     def _build_scope(self, head: RequestHead) -> Scope:
         return {

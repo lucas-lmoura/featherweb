@@ -130,6 +130,17 @@ class _GiveRequest(_Instruction):
         return request
 
 
+class _GiveWebSocket(_Instruction):
+    """The connection itself, for a handler that declared it."""
+
+    __slots__ = ()
+
+    async def extract(
+        self, request: Request, path_params: Mapping[str, Any], exception: BaseException | None
+    ) -> Any:
+        raise RouteConfigurationError("a WebSocket parameter only works on a @Ws handler")
+
+
 class _GiveException(_Instruction):
     __slots__ = ()
 
@@ -168,7 +179,7 @@ class _FromRequest(_Instruction):
     ) -> Any:
         raw = await self._read(request, path_params)
         if raw is MISSING:
-            return self._fallback()
+            return self.fallback()
         try:
             return self.validate(raw)
         except Invalid as exc:
@@ -179,7 +190,7 @@ class _FromRequest(_Instruction):
                 ]
             ) from None
 
-    def _fallback(self) -> Any:
+    def fallback(self) -> Any:
         if self.default_factory is not None:
             return self.default_factory()
         if self.default is not MISSING:
@@ -289,6 +300,23 @@ class Binder:
             raise ValidationError(errors)
         return arguments
 
+    async def build_websocket(self, socket: Any) -> dict[str, Any]:
+        """Arguments for a ``@Ws`` handler: the socket, plus its path params.
+
+        A socket has no query to validate or body to read, so the only thing
+        that can be asked for besides the connection is the path.
+        """
+        arguments: dict[str, Any] = {}
+        for instruction in self._instructions:
+            if isinstance(instruction, _GiveWebSocket):
+                arguments[instruction.name] = socket
+            elif isinstance(instruction, _FromRequest) and instruction.location == "path":
+                raw = socket.path_params.get(instruction.alias, MISSING)
+                arguments[instruction.name] = (
+                    instruction.validate(raw) if raw is not MISSING else instruction.fallback()
+                )
+        return arguments
+
     def __repr__(self) -> str:
         bound = ", ".join(instruction.name for instruction in self._instructions)
         return f"Binder({bound})"
@@ -320,6 +348,9 @@ def compile_binder(
 
         if hint is Request:
             instructions.append(_GiveRequest(name))
+            continue
+        if _is_websocket(hint):
+            instructions.append(_GiveWebSocket(name))
             continue
         marker = next((item for item in markers if isinstance(item, _Marker)), None)
         if wants_exception and marker is None and name not in path_params:
@@ -423,6 +454,15 @@ def _collection_item(hint: Any) -> Any:
 
     collection = collection_of(hint)
     return hint if collection is None else collection[1]
+
+
+def _is_websocket(hint: Any) -> bool:
+    """Whether ``hint`` is :class:`~featherweb.websocket.WebSocket`."""
+    if not (isinstance(hint, type) and hint.__name__ == "WebSocket"):
+        return False
+    from .websocket import WebSocket
+
+    return issubclass(hint, WebSocket)
 
 
 def _is_upload(hint: Any) -> bool:
