@@ -152,6 +152,45 @@
     <pre id="out-clock">–</pre>
   </div>
 
+  <h2>Authentication</h2>
+  <div class="card">
+    <div class="row">
+      <span class="verb">POST</span><code>/api/auth/login</code>
+      <button class="primary" data-login="ada">log in as ada (editor)</button>
+      <button class="primary" data-login="root">log in as root (admin)</button>
+      <button data-login="guest">log in as guest (no roles)</button>
+      <button id="logout">log out</button>
+    </div>
+    <div class="row" style="margin-top:.6rem">
+      <button data-get="/api/auth/whoami" data-target="out-auth">whoami (open)</button>
+      <button data-get="/api/auth/me" data-target="out-auth">/me (@Authenticated)</button>
+      <button data-get="/api/auth/editors" data-target="out-auth">/editors (@Roles)</button>
+      <button data-get="/api/auth/admins" data-target="out-auth">/admins (@Roles)</button>
+    </div>
+    <p class="meta">
+      Logged out, a guarded route is 401 with a <code>WWW-Authenticate</code>. Logged in
+      without the role it is 403 — the difference being whether retrying with credentials
+      would help. The session rides in a signed cookie you can read in devtools but cannot edit.
+    </p>
+    <pre id="out-auth">–</pre>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <code>JWT</code>
+      <button class="primary" id="jwt-issue">issue a token</button>
+      <button id="jwt-check">verify it</button>
+      <button id="jwt-tamper">tamper, then verify</button>
+      <button id="jwt-expired">issue an expired one</button>
+    </div>
+    <p class="meta">
+      This app authenticates by session; these buttons are a playground for the token layer.
+      A changed character breaks the signature, and an expired token is refused even though
+      its signature is perfectly good.
+    </p>
+    <pre id="out-jwt">–</pre>
+  </div>
+
   <h2>Errors</h2>
   <div class="card">
     <div class="row">
@@ -280,6 +319,38 @@ $("upload").addEventListener("click", async () => {
   form.append("note", $("upload-note").value);
   form.append("document", file);
   call("/api/files/upload", "out-upload", { method: "POST", body: form });
+});
+
+document.querySelectorAll("[data-login]").forEach((button) => {
+  button.addEventListener("click", () =>
+    call(`/api/auth/login/${button.dataset.login}`, "out-auth", { method: "POST" }));
+});
+$("logout").addEventListener("click", () =>
+  call("/api/auth/logout", "out-auth", { method: "POST" }));
+
+let jwt = null;
+async function jwtCall(path, body, then) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  then(data);
+  $("out-jwt").textContent = JSON.stringify(data, null, 2);
+}
+$("jwt-issue").addEventListener("click", () =>
+  jwtCall("/api/jwt/issue?user=root", {}, (data) => { jwt = data.token; }));
+$("jwt-expired").addEventListener("click", () =>
+  jwtCall("/api/jwt/issue?user=root&expires_in=-60", {}, (data) => { jwt = data.token; }));
+$("jwt-check").addEventListener("click", () => {
+  if (!jwt) { $("out-jwt").textContent = "issue one first"; return; }
+  jwtCall("/api/jwt/inspect", { token: jwt }, () => {});
+});
+$("jwt-tamper").addEventListener("click", () => {
+  if (!jwt) { $("out-jwt").textContent = "issue one first"; return; }
+  const broken = jwt.slice(0, -3) + (jwt.endsWith("aaa") ? "bbb" : "aaa");
+  jwtCall("/api/jwt/inspect", { token: broken }, () => {});
 });
 
 let socket = null;

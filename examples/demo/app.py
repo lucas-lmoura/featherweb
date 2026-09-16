@@ -28,6 +28,8 @@ from typing import Annotated, Any
 from featherweb import (
     CORS,
     App,
+    Authenticated,
+    Body,
     ControllerAdvice,
     Delete,
     ExceptionHandler,
@@ -37,18 +39,24 @@ from featherweb import (
     GZip,
     Header,
     HTTPError,
+    Identity,
     Middleware,
     Next,
     Post,
     Query,
     Request,
     Response,
+    Roles,
     Route,
+    Session,
+    SessionAuth,
     StreamingResponse,
     UploadFile,
     WebSocket,
     Ws,
 )
+from featherweb.auth.jwt import JWTAuth, JWTError
+from featherweb.auth.jwt import decode as jwt_decode
 from featherweb.staticfiles import StaticFiles
 
 HERE = Path(__file__).parent
@@ -233,6 +241,83 @@ class ErrorController:
         raise RuntimeError("this one was not expected")
 
 
+# -- authentication ----------------------------------------------------------
+
+#: A demo secret. A real one comes from the environment and is not in the repo.
+SECRET = "demo-secret-do-not-use-this-anywhere-real"
+
+#: secure=False only because this demo runs over plain http; the default is True.
+AUTH = SessionAuth(SECRET, secure=False)
+
+#: What each demo user is allowed to be.
+USERS: dict[str, list[str]] = {"ada": ["editor"], "root": ["admin", "editor"], "guest": []}
+
+
+@Route("/api/auth")
+class AuthController:
+    """Signed-cookie sessions, and the two ways a request can be turned away."""
+
+    @Post("/login/{user}")
+    async def login(self, user: str, session: Session) -> dict[str, Any]:
+        """No password here — a real login would check one before this line."""
+        if user not in USERS:
+            raise HTTPError(404, f"no demo user {user!r}")
+        identity = AUTH.login(session, user, roles=USERS[user])
+        return {"id": identity.id, "roles": sorted(identity.roles)}
+
+    @Post("/logout")
+    async def logout(self, session: Session) -> dict[str, Any]:
+        AUTH.logout(session)
+        return {"ok": True}
+
+    @Get("/whoami")
+    async def whoami(self, identity: Identity | None = None) -> dict[str, Any]:
+        """Open to anyone; the identity is simply ``None`` when nobody is logged in."""
+        if identity is None:
+            return {"authenticated": False}
+        return {"authenticated": True, "id": identity.id, "roles": sorted(identity.roles)}
+
+    @Get("/me")
+    @Authenticated
+    async def me(self, identity: Identity) -> dict[str, Any]:
+        """Needs a login: without one this is a 401."""
+        return {"id": identity.id, "roles": sorted(identity.roles)}
+
+    @Get("/editors")
+    @Roles("editor")
+    async def editors(self) -> dict[str, Any]:
+        return {"seen": "the editors' page"}
+
+    @Get("/admins")
+    @Roles("admin")
+    async def admins(self) -> dict[str, Any]:
+        """Needs the role: a logged-in editor gets 403, not 401."""
+        return {"seen": "the admin page"}
+
+
+@Route("/api/jwt")
+class TokenController:
+    """The JWT rules, shown by trying to break them.
+
+    This application authenticates by session, so these routes are a playground
+    for the token layer rather than the way in.
+    """
+
+    @Post("/issue")
+    async def issue(self, user: str = "ada", expires_in: int = 3600) -> dict[str, Any]:
+        token = JWTAuth(SECRET).issue(user, roles=USERS.get(user, []), expires_in=expires_in)
+        return {"token": token}
+
+    @Post("/inspect")
+    async def inspect(self, token: Annotated[str, Body("token")]) -> dict[str, Any]:
+        """Verify a token and say why it failed, when it does."""
+        try:
+            claims = jwt_decode(token, SECRET, algorithms=["HS256"])
+        except JWTError as exc:
+            return {"valid": False, "error": f"{type(exc).__name__}: {exc}"}
+        return {"valid": True, "claims": claims}
+
+
 # -- WebSocket ---------------------------------------------------------------
 
 
@@ -287,9 +372,12 @@ app = App(
         FileController,
         ErrorController,
         SocketController,
+        AuthController,
+        TokenController,
         Errors,
     ],
     middlewares=[Timing, GZip(minimum_size=256), CORS(allow_origins=["*"])],
+    auth=AUTH,
     debug=True,
 )
 app.mount("/static", StaticFiles(STATIC, max_age=60))
