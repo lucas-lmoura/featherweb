@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, Any, Final
 from ._types import Message, Receive, Scope
 from .exceptions import HTTPError
 
-if TYPE_CHECKING:  # imported lazily: multipart is off the package import path
+if TYPE_CHECKING:  # imported lazily: these are off the package import path
+    from .auth.guards import Identity
+    from .auth.session import Session
     from .multipart import MultipartLimits, UploadFile
 
 __all__ = ["Connection", "FormData", "Headers", "QueryParams", "Request"]
@@ -147,7 +149,15 @@ class Connection:
     cookies, and all of those are parsed only when something asks for them.
     """
 
-    __slots__ = ("_cookies", "_headers", "_query", "path_params", "scope")
+    __slots__ = (
+        "_cookies",
+        "_headers",
+        "_query",
+        "identity",
+        "path_params",
+        "scope",
+        "session",
+    )
 
     def __init__(self, scope: Scope, *, path_params: Mapping[str, Any] | None = None) -> None:
         self.scope = scope
@@ -155,6 +165,11 @@ class Connection:
         self._headers: Headers | None = None
         self._query: QueryParams | None = None
         self._cookies: dict[str, str] | None = None
+        #: Filled in by the configured authentication strategy, when there is
+        #: one and this route needs it; ``None`` means "not authenticated".
+        self.identity: Identity | None = None
+        #: Only a session-based strategy sets this.
+        self.session: Session | None = None
 
     @property
     def path(self) -> str:

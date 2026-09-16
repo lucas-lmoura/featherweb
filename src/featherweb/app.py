@@ -22,7 +22,8 @@ from .response import Response
 from .routing import RouteConflictError, Router, normalize_path, path_param_names
 from .serialization import Serializer, compile_serializer, resolve_return_hint, unwrap_response
 
-if TYPE_CHECKING:  # websocket is imported on demand, not at package import
+if TYPE_CHECKING:  # these are imported on demand, not at package import
+    from .auth.guards import Guard
     from .websocket import WebSocket
 
 __all__ = ["App"]
@@ -55,7 +56,7 @@ class _ErrorHandler:
 class _Endpoint:
     """A bound controller method, ready to be called."""
 
-    __slots__ = ("binder", "errors", "handler", "name", "serializer", "status")
+    __slots__ = ("binder", "errors", "guard", "handler", "name", "serializer", "status")
 
     def __init__(
         self,
@@ -65,9 +66,12 @@ class _Endpoint:
         name: str,
         errors: Mapping[type[BaseException], _ErrorHandler],
         serializer: Serializer | None,
+        guard: Guard | None = None,
     ) -> None:
         self.handler = handler
         self.binder = binder
+        #: What the caller has to be before the handler runs; ``None`` is "anyone".
+        self.guard = guard
         self.status = status
         self.name = name
         #: Exception handlers declared on the owning controller.
@@ -92,8 +96,11 @@ class App:
         on_shutdown: Iterable[Hook] = (),
         debug: bool = False,
         max_body_size: int = DEFAULT_MAX_BODY_SIZE,
+        auth: Any = None,
     ) -> None:
         self.debug = debug
+        #: The configured authentication strategy, or ``None``.
+        self.auth = auth
         self.max_body_size = max_body_size
         self._router: Router[_Endpoint] = Router()
         self._middlewares: list[MiddlewareCallable] = []
@@ -184,10 +191,14 @@ class App:
             self._add_controller(instance)
 
     def _add_controller(self, controller: object) -> None:
+        from .auth.guards import guard_of
+
         cls = type(controller)
         prefix = str(getattr(cls, PREFIX_ATTR, ""))
         errors: dict[type[BaseException], _ErrorHandler] = {}
         self._collect_errors(controller, errors)
+        # Whatever the class requires applies to every method on it.
+        class_guard = guard_of(cls)
         for name, member in _members(cls):
             marks: list[RouteMark] = list(getattr(member, ROUTES_ATTR, ()))
             if not marks:
@@ -195,6 +206,8 @@ class App:
             bound: Callable[..., Awaitable[Any]] = getattr(controller, name)
             where = f"{cls.__qualname__}.{name}"
             serializer = _serializer_for(bound)
+            # A method adds to the class's requirements; it cannot relax them.
+            guard = _merge_guards(class_guard, guard_of(member))
             for mark in marks:
                 path = _join(prefix, mark.path)
                 names = path_param_names(path)
@@ -205,7 +218,7 @@ class App:
                     )
                     continue
                 binder = compile_binder(bound, path_params=names, where=where)
-                endpoint = _Endpoint(bound, binder, mark.status, where, errors, serializer)
+                endpoint = _Endpoint(bound, binder, mark.status, where, errors, serializer, guard)
                 self._router.add(mark.method, path, endpoint)
 
     def _collect_errors(
@@ -323,12 +336,33 @@ class App:
                 return await application(request, relative)
             endpoint, params = self._resolve(request)
             request.path_params = params
+            if endpoint.guard is not None or endpoint.binder.needs_auth:
+                self._authenticate(request, endpoint)
             arguments = await endpoint.binder.build(request, params)
             result = await endpoint.handler(**arguments)
-            return _make_response(result, endpoint.status, endpoint.serializer)
+            response = _make_response(result, endpoint.status, endpoint.serializer)
+            self._finish_auth(request, response)
+            return response
         except Exception as exc:
             errors = endpoint.errors if endpoint is not None else None
             return await self._error_response(exc, request, errors)
+
+    def _authenticate(self, request: Request, endpoint: _Endpoint) -> None:
+        """Work out who the caller is, then hold the endpoint's guard to it."""
+        if self.auth is None:
+            raise RuntimeError(
+                f"{endpoint.name} needs authentication, but this application has none "
+                f"configured; pass App(auth=...)"
+            )
+        request.identity = self.auth.authenticate(request)
+        if endpoint.guard is not None:
+            endpoint.guard.check(request.identity, scheme=getattr(self.auth, "scheme", "Bearer"))
+
+    def _finish_auth(self, request: Request, response: Response[Any]) -> None:
+        """Let a session strategy write its cookie back."""
+        finish = getattr(self.auth, "finish", None)
+        if finish is not None:
+            finish(request, response)
 
     def _mounted(self, request: Request) -> tuple[Mounted, str] | None:
         """The mount that claims this path, and what is left of the path below it."""
@@ -397,7 +431,11 @@ class App:
 
     def _fallback(self, exc: Exception, request: Request) -> Response[Any]:
         if isinstance(exc, HTTPError):
-            return Response({"detail": exc.detail}, status=exc.status, headers=exc.headers)
+            response = Response({"detail": exc.detail}, status=exc.status, headers=exc.headers)
+            if response.status == 401 and "www-authenticate" not in response.headers:
+                # RFC 9110 §11.6.1, filled in from whichever strategy is configured.
+                response.headers["www-authenticate"] = getattr(self.auth, "scheme", "Bearer")
+            return response
         if isinstance(exc, ClientDisconnected):
             logger.debug("client went away during %s %s", request.method, request.path)
             return Response(None, status=400)
@@ -420,6 +458,13 @@ class App:
 
     def __repr__(self) -> str:
         return f"<App {len(self._middlewares)} middlewares>"
+
+
+def _merge_guards(outer: Guard | None, inner: Guard | None) -> Guard | None:
+    """Both levels apply; either one alone is enough to require something."""
+    if outer is None:
+        return inner
+    return outer.merge(inner)
 
 
 async def _close_quietly(socket: WebSocket, code: int = 1000) -> None:

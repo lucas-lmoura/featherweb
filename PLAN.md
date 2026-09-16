@@ -299,8 +299,8 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 | 3. Type hints | `params.py` (entrada) + `serialization.py` (retorno tipado, `Response[T]`), 422 | Regras das seções 5.3 e 5.4 cobertas por testes | ✅ concluída (`File()` e `FileResponse`/`StreamingResponse`, citados em 5.3 e 5.4, dependem do multipart e do streaming da Fase 4) |
 | 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | ✅ concluída (100 MB com pico de ~1,4 MB; 304/206/416 cobertos nos três stacks) |
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | ✅ concluída (echo, ping/pong, close com código e razão e subprotocolo, verificados no servidor próprio e no uvicorn) |
-| 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | ⏭️ próxima |
-| 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | pendente |
+| 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | ✅ concluída (inclui RS256/ES256 com o extra `crypto` e a recusa do ataque de confusão de algoritmo) |
+| 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | ⏭️ próxima |
 | 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install featherweb` + exemplo do README funciona | pendente |
 
 ## 9. Fora do escopo da v0.1 (candidatos a v0.2+)

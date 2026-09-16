@@ -141,6 +141,43 @@ class _GiveWebSocket(_Instruction):
         raise RouteConfigurationError("a WebSocket parameter only works on a @Ws handler")
 
 
+class _GiveIdentity(_Instruction):
+    """The authenticated caller, or 401 when the annotation is not optional."""
+
+    __slots__ = ("optional",)
+
+    def __init__(self, name: str, *, optional: bool) -> None:
+        super().__init__(name)
+        self.optional = optional
+
+    async def extract(
+        self, request: Request, path_params: Mapping[str, Any], exception: BaseException | None
+    ) -> Any:
+        identity = request.identity
+        if identity is None and not self.optional:
+            # The handler asked for an Identity, not an Identity | None.
+            from .auth.guards import Unauthenticated
+
+            raise Unauthenticated
+        return identity
+
+
+class _GiveSession(_Instruction):
+    """The session, which only a session-based strategy can provide."""
+
+    __slots__ = ()
+
+    async def extract(
+        self, request: Request, path_params: Mapping[str, Any], exception: BaseException | None
+    ) -> Any:
+        if request.session is None:
+            raise RuntimeError(
+                "a handler asked for a Session, but this application has no "
+                "session-based authentication configured (App(auth=SessionAuth(...)))"
+            )
+        return request.session
+
+
 class _GiveException(_Instruction):
     __slots__ = ()
 
@@ -278,6 +315,14 @@ class Binder:
     def empty(self) -> bool:
         return not self._instructions
 
+    @property
+    def needs_auth(self) -> bool:
+        """Whether a handler asked for the identity or the session by type."""
+        return any(
+            isinstance(instruction, _GiveIdentity | _GiveSession)
+            for instruction in self._instructions
+        )
+
     async def build(
         self,
         request: Request,
@@ -351,6 +396,14 @@ def compile_binder(
             continue
         if _is_websocket(hint):
             instructions.append(_GiveWebSocket(name))
+            continue
+        inner_hint, is_optional = unwrap_optional(hint)
+        if _is_auth_type(inner_hint, "Identity"):
+            optional = is_optional or parameter.default is not parameter.empty
+            instructions.append(_GiveIdentity(name, optional=optional))
+            continue
+        if _is_auth_type(inner_hint, "Session"):
+            instructions.append(_GiveSession(name))
             continue
         marker = next((item for item in markers if isinstance(item, _Marker)), None)
         if wants_exception and marker is None and name not in path_params:
@@ -454,6 +507,19 @@ def _collection_item(hint: Any) -> Any:
 
     collection = collection_of(hint)
     return hint if collection is None else collection[1]
+
+
+def _is_auth_type(hint: Any, name: str) -> bool:
+    """Whether ``hint`` is the auth class called ``name``.
+
+    The name is checked first so an application without authentication never
+    imports the auth package just to answer this.
+    """
+    if not (isinstance(hint, type) and hint.__name__ == name):
+        return False
+    from . import auth
+
+    return issubclass(hint, getattr(auth, name))
 
 
 def _is_websocket(hint: Any) -> bool:

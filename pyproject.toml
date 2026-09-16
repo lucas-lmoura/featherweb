@@ -9,6 +9,10 @@ authors = [
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+# Only for the JWT algorithms the standard library cannot do (RS*/ES*).
+crypto = ["cryptography>=43"]
+
 [project.scripts]
 featherweb = "featherweb.cli:main"
 
@@ -19,6 +23,7 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "coverage>=7.16.1",
+    "cryptography>=50.0.1",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
