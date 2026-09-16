@@ -238,6 +238,22 @@ class HttpProtocol(asyncio.Protocol):
         """Wait while the transport's write buffer is over its high-water mark."""
         await self._writable.wait()
 
+    def pause_reading(self) -> None:
+        """Stop taking bytes off this connection until told otherwise."""
+        transport = self._transport
+        if self._read_paused or transport is None or transport.is_closing():
+            return
+        transport.pause_reading()
+        self._read_paused = True
+
+    def resume_reading(self) -> None:
+        """Start taking bytes again after :meth:`pause_reading`."""
+        transport = self._transport
+        if not self._read_paused or transport is None or transport.is_closing():
+            return
+        transport.resume_reading()
+        self._read_paused = False
+
     def close(self) -> None:
         if self._transport is not None:
             self._transport.close()

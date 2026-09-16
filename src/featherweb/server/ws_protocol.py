@@ -58,6 +58,13 @@ _MAX_CONTROL_PAYLOAD: Final = 125
 #: Default ceiling for one assembled message.
 DEFAULT_MAX_MESSAGE_SIZE: Final = 16 * 1024 * 1024
 
+#: Messages may queue up to here before the connection stops being read, and
+#: reading starts again once the handler has drained it back down to the lower
+#: mark. Without this a client that floods a slow handler grows the queue
+#: without limit, which is the read-side twin of an unbounded write buffer.
+_PAUSE_READING_AT: Final = 32
+_RESUME_READING_AT: Final = 8
+
 
 class WebSocketProtocolError(Exception):
     """The peer broke the framing rules; carries the close code to answer with."""
@@ -326,6 +333,9 @@ class WebSocketCycle:
                 self._handle_frame(frame)
                 if self.closed:
                     return
+                if self._incoming.qsize() >= _PAUSE_READING_AT:
+                    # The handler is behind: stop reading rather than queue more.
+                    self.protocol.pause_reading()
         except WebSocketProtocolError as exc:
             self.fail(exc.code, exc.reason)
 
@@ -421,7 +431,10 @@ class WebSocketCycle:
         if not self._connect_sent:
             self._connect_sent = True
             return {"type": "websocket.connect"}
-        return await self._incoming.get()
+        message = await self._incoming.get()
+        if self._incoming.qsize() <= _RESUME_READING_AT:
+            self.protocol.resume_reading()
+        return message
 
     async def send(self, message: Message) -> None:
         kind = message["type"]
@@ -429,6 +442,9 @@ class WebSocketCycle:
             self._accept(message)
         elif kind == "websocket.send":
             self._send_payload(message)
+            # Backpressure: if the client is not reading, the handler waits here
+            # rather than growing the transport's buffer without limit.
+            await self.protocol.drain()
         elif kind == "websocket.close":
             self._close(message)
         else:

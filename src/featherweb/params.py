@@ -306,22 +306,20 @@ class _WholeBody(_Instruction):
 class Binder:
     """Compiled recipe for a handler's arguments."""
 
-    __slots__ = ("_instructions",)
+    __slots__ = ("_instructions", "needs_auth")
 
     def __init__(self, instructions: tuple[_Instruction, ...]) -> None:
         self._instructions = instructions
+        #: Whether a handler asked for the identity or the session by type.
+        #: Worked out here rather than per request: the answer cannot change,
+        #: and asking it on the way in would be a cost on every request.
+        self.needs_auth = any(
+            isinstance(instruction, _GiveIdentity | _GiveSession) for instruction in instructions
+        )
 
     @property
     def empty(self) -> bool:
         return not self._instructions
-
-    @property
-    def needs_auth(self) -> bool:
-        """Whether a handler asked for the identity or the session by type."""
-        return any(
-            isinstance(instruction, _GiveIdentity | _GiveSession)
-            for instruction in self._instructions
-        )
 
     async def build(
         self,

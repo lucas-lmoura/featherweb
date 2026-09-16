@@ -16,12 +16,40 @@
 
 ## 2. Metas de leveza (mensuráveis)
 
-- Zero dependências obrigatórias.
-- Import do pacote < 15 ms (`python -X importtime -c "import featherweb"`); módulos pesados (multipart, websocket, staticfiles, auth) importados sob demanda.
-  Medido em 2026-09-15, com a Fase 2 pronta (Windows, Python 3.12): **29 ms**, dos quais ~19 ms são o `logging` da stdlib nessa máquina; `dataclasses` e `inspect` já ficaram fora do caminho de import. Fechar a diferença é trabalho da Fase 7.
-- Núcleo com ~3.500 linhas ou menos (autenticação incluída).
-- Memória ociosa < 20 MB por processo.
-- Hello world / JSON com throughput na faixa de Starlette+uvicorn (benchmark reprodutível em `benchmarks/`).
+Reproduzir com `python benchmarks/measure.py --all`. Os números abaixo são de
+2026-09-16, com a Fase 7 pronta (Windows 10, Python 3.12, máquina de mesa).
+
+| Meta | Alvo | Medido | |
+|---|---|---|---|
+| Dependências de runtime | zero | zero (`tests/test_package.py` verifica) | ✅ |
+| Import do pacote | < 15 ms | **20 ms** no interpretador limpo; **9,7 ms** com `typing` já carregado | ⚠️ |
+| Linhas do núcleo | ~3.500 | **5.570** de código (8.009 no total, com 725 de docstring) | ❌ |
+| Memória ociosa | < 20 MB | **16,8 MB** com a aplicação construída | ✅ |
+| Throughput | faixa de Starlette+uvicorn | dentro de ~5% nas três rotas, no mesmo uvicorn | ✅ |
+
+Sobre as duas que não bateram:
+
+- **Import.** Caiu de 29 ms para 20 ms ao tirar o `logging` do caminho de import
+  (`_logging.py`). Os ~10 ms que sobram são quase todos o `typing`, e adiá-lo
+  seria maquiar a medição: registrar um único controller já chama
+  `get_type_hints`, então o custo voltaria em `App(...)` em vez de sumir. Num
+  processo que já tenha `typing` carregado — qualquer aplicação real — o import
+  custa 9,7 ms. Módulos pesados (multipart, staticfiles, websocket, auth) e o
+  próprio `logging` ficam fora do caminho, e o benchmark verifica isso.
+- **Linhas.** O alvo foi escrito antes de as seções 5.3 a 5.5 existirem em
+  detalhe. As fases 3 a 6 somam ~3.000 linhas de código sozinhas (parâmetros
+  tipados, multipart, WebSocket e autenticação), e cortá-las para caber num
+  número redondo pioraria o que existe. Fica registrado como meta não atingida,
+  não como dívida a pagar às pressas.
+
+Throughput medido com o gerador de carga em `benchmarks/load.py`, porque não há
+`oha`/`hey`/`wrk` nesta máquina; ele dirige todos os stacks pelo mesmo cliente,
+então a comparação vale mesmo com os números absolutos abaixo do que uma
+ferramenta nativa mostraria. A variação entre execuções chega a ±20% aqui, então
+o que importa é a razão entre as colunas, não o valor. Com uvicorn nos dois
+lados: featherweb 4.733/4.113/4.271 req/s contra Starlette 4.311/4.334/4.179
+(plaintext/JSON/path param). O servidor próprio faz 8.649/7.729/6.912, cerca de
+1,8× o uvicorn.
 
 ## 3. Arquitetura
 
@@ -300,8 +328,8 @@ Configuração (arquivo e/ou variáveis de ambiente, como o `application.propert
 | 4. Streaming e arquivos | `StreamingResponse`, `FileResponse`, `StaticFiles`, multipart | Upload de 100 MB sem estourar memória; 304/206 corretos | ✅ concluída (100 MB com pico de ~1,4 MB; 304/206/416 cobertos nos três stacks) |
 | 5. WebSocket | `ws_protocol.py` + `websocket.py` + `@Ws` | Echo com cliente `websockets`; close/ping corretos | ✅ concluída (echo, ping/pong, close com código e razão e subprotocolo, verificados no servidor próprio e no uvicorn) |
 | 6. Autenticação | cookies assinados, `SessionAuth`, `JWTAuth`, `@Authenticated`/`@Roles`, `Identity` | Login por sessão e por JWT; 401/403 corretos; tokens adulterados, expirados ou com `alg` inesperado rejeitados | ✅ concluída (inclui RS256/ES256 com o extra `crypto` e a recusa do ataque de confusão de algoritmo) |
-| 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | ⏭️ próxima |
-| 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install featherweb` + exemplo do README funciona | pendente |
+| 7. Endurecimento e desempenho | timeouts, limites, graceful shutdown, workers, TLS, extras opcionais, profiling | Metas da seção 2 atingidas e registradas | ✅ concluída (medições na seção 2; import e linhas ficaram fora do alvo, com o porquê registrado) |
+| 8. Release v0.1 | README, exemplos, docs da API, publicação no PyPI | `pip install featherweb` + exemplo do README funciona | ⏭️ próxima |
 
 ## 9. Fora do escopo da v0.1 (candidatos a v0.2+)
 HTTP/2 e HTTP/3 · OAuth (ex.: Google) · geração de OpenAPI (os type hints da Fase 3 já dão a base) · hot reload · `permessage-deflate` · parser C opcional (`httptools`) · rotas avulsas (`@app.get`).

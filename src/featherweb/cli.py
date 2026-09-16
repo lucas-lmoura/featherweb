@@ -27,12 +27,35 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--host", default="127.0.0.1", help="interface to bind (default: %(default)s)")
     run.add_argument("--port", type=int, default=8000, help="port to bind (default: %(default)s)")
     run.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="worker processes sharing the port (default: %(default)s)",
+    )
+    run.add_argument("--ssl-certfile", help="PEM certificate; serves HTTPS when given")
+    run.add_argument("--ssl-keyfile", help="private key for --ssl-certfile")
+    run.add_argument("--ssl-password", help="passphrase for an encrypted --ssl-keyfile")
+    run.add_argument(
         "--log-level",
         default="info",
         choices=_LOG_LEVELS,
         help="verbosity of the server log (default: %(default)s)",
     )
     return parser
+
+
+def ssl_context(arguments: Any) -> Any:
+    """Build an SSL context from the command line, or ``None`` for plain HTTP."""
+    certfile = getattr(arguments, "ssl_certfile", None)
+    if not certfile:
+        return None
+    import ssl
+
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.load_cert_chain(
+        certfile, getattr(arguments, "ssl_keyfile", None), getattr(arguments, "ssl_password", None)
+    )
+    return context
 
 
 def load(target: str) -> Any:
@@ -66,6 +89,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         level=getattr(logging, str(arguments.log_level).upper()),
         format="%(levelname)s: %(message)s",
     )
+    options: dict[str, Any] = {"host": str(arguments.host), "port": int(arguments.port)}
+    try:
+        options["ssl_context"] = ssl_context(arguments)
+    except (OSError, ValueError) as exc:
+        print(f"featherweb: cannot load the TLS certificate ({exc})", file=sys.stderr)
+        return 2
+
+    workers = int(getattr(arguments, "workers", 1))
+    if workers > 1:
+        return _run_workers(str(arguments.target), workers, options)
+
     try:
         app = load(str(arguments.target))
     except (ImportError, AttributeError, ValueError) as exc:
@@ -74,5 +108,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from .server.runner import run
 
-    run(app, host=str(arguments.host), port=int(arguments.port))
+    run(app, **options)
+    return 0
+
+
+def _run_workers(target: str, workers: int, options: dict[str, Any]) -> int:
+    """Serve from several processes, where the platform allows it."""
+    import logging
+
+    from .server.workers import Supervisor, supports_reuse_port
+
+    if options.get("ssl_context") is not None:
+        # An ssl.SSLContext cannot be pickled across to a spawned worker.
+        print(
+            "featherweb: --workers cannot be combined with TLS yet; "
+            "terminate TLS in front of the server instead",
+            file=sys.stderr,
+        )
+        return 2
+    if not supports_reuse_port():
+        logging.getLogger("featherweb.server").warning(
+            "this platform cannot share a port between processes; serving with one worker"
+        )
+        workers = 1
+    if workers == 1:
+        try:
+            app = load(target)
+        except (ImportError, AttributeError, ValueError) as exc:
+            print(f"featherweb: {exc}", file=sys.stderr)
+            return 2
+        from .server.runner import run
+
+        run(app, **options)
+        return 0
+    Supervisor(target, workers=workers, **options).run()
     return 0

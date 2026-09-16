@@ -7,11 +7,11 @@ request is a route lookup, a dict of arguments and a call.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Final, cast
 
+from ._logging import get_logger
 from ._types import Message, Receive, Scope, Send
 from .controllers import PREFIX_ATTR, ROUTES_ATTR, WEBSOCKET, RouteMark
 from .exceptions import ADVICE_ATTR, HANDLES_ATTR, HTTPError
@@ -28,7 +28,7 @@ if TYPE_CHECKING:  # these are imported on demand, not at package import
 
 __all__ = ["App"]
 
-logger: Final = logging.getLogger("featherweb")
+logger: Final = get_logger("featherweb")
 
 type Hook = Callable[[], Any]
 #: What :meth:`App.mount` accepts: the request plus the path below the mount.

@@ -354,6 +354,7 @@ class _FakeProtocol:
     def __init__(self) -> None:
         self.written: list[bytes] = []
         self.closed = False
+        self.reading = True
 
     def write(self, data: bytes) -> None:
         self.written.append(data)
@@ -361,9 +362,46 @@ class _FakeProtocol:
     def close(self) -> None:
         self.closed = True
 
+    def pause_reading(self) -> None:
+        self.reading = False
+
+    def resume_reading(self) -> None:
+        self.reading = True
+
+    async def drain(self) -> None:
+        return None
+
 
 def _close_code(written: list[bytes]) -> int:
     for data in reversed(written):
         if data and data[0] & 0x0F == OP_CLOSE:
             return int.from_bytes(data[2:4], "big")
     raise AssertionError("no close frame was sent")
+
+
+# -- backpressure -----------------------------------------------------------
+
+
+async def test_a_flood_of_messages_stops_the_connection_being_read() -> None:
+    """A client that outruns the handler must not grow the queue without limit."""
+    from featherweb.server.ws_protocol import WebSocketCycle
+
+    protocol = _FakeProtocol()
+    cycle = WebSocketCycle(protocol, head(UPGRADE_HEADERS), {"type": "websocket"})
+    for index in range(40):
+        cycle.feed_data(masked(OP_TEXT, f"m{index}".encode()))
+    assert not protocol.reading, "reading should have been paused"
+
+
+async def test_draining_the_queue_starts_reading_again() -> None:
+    from featherweb.server.ws_protocol import WebSocketCycle
+
+    protocol = _FakeProtocol()
+    cycle = WebSocketCycle(protocol, head(UPGRADE_HEADERS), {"type": "websocket"})
+    for index in range(40):
+        cycle.feed_data(masked(OP_TEXT, f"m{index}".encode()))
+    assert not protocol.reading
+    await cycle.receive()  # the connect message, which is not queued
+    for _ in range(35):
+        await cycle.receive()
+    assert protocol.reading, "reading should have resumed once the handler caught up"
