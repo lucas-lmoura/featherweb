@@ -29,7 +29,7 @@ if TYPE_CHECKING:  # the names __getattr__ hands out, for the type checker
     from .staticfiles import StaticFiles
     from .websocket import WebSocket, WebSocketDisconnect
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 
 #: Handed out by ``__getattr__`` so the auth package stays off the import path.

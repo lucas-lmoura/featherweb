@@ -703,8 +703,8 @@ Portuguese, and [RELEASING.md](RELEASING.md) covers cutting a version.
 
 ## Status
 
-Version 0.1: everything above works and is tested, but the public API may still move
-before 1.0. The two areas carrying the most risk, the HTTP/1.1 parser and the
+Version 1.0: everything above works and is tested, and the public API follows semantic
+versioning from here, so a breaking change means a new major version. The two areas carrying the most risk, the HTTP/1.1 parser and the
 authentication layer, are built to the requirements in PLAN.md section 6, with the
 request-smuggling and token-forgery cases covered by tests.
 

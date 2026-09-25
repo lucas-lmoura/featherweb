@@ -44,7 +44,7 @@ PY
 Worth a look inside the artifacts:
 
 ```sh
-python -c "import zipfile; print(*zipfile.ZipFile('dist/featherweb-0.1.0-py3-none-any.whl').namelist(), sep='\n')"
+python -c "import zipfile; print(*zipfile.ZipFile('dist/featherweb-1.0.0-py3-none-any.whl').namelist(), sep='\n')"
 ```
 
 - [ ] `featherweb/py.typed` is in the wheel, or type checkers ignore the annotations.
@@ -69,12 +69,12 @@ One-time setup:
 Then, for each release:
 
 ```sh
-git tag -a v0.1.0 -m "featherweb 0.1.0"
+git tag -a v1.0.0 -m "featherweb 1.0.0"
 git push origin main --tags
 ```
 
 A failed run uploads nothing, so a wrong tag is fixed by deleting it
-(`git push origin :refs/tags/v0.1.0`) and tagging again. A successful one cannot be
+(`git push origin :refs/tags/v1.0.0`) and tagging again. A successful one cannot be
 undone: a version number can be yanked but never reused.
 
 ### By hand, if the workflow is unavailable
