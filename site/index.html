@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>featherweb — your type hints are the whole spec</title>
+<meta name="description" content="An async web framework for Python with class-based controllers, input and output inferred from type hints, and its own HTTP/1.1 and WebSocket server. Zero dependencies.">
+<meta property="og:title" content="featherweb">
+<meta property="og:description" content="Your type hints are the whole spec. An async Python web framework with zero dependencies.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232155C4'/%3E%3Cpath d='M9 25 C13 17 17 11 24 7' stroke='%23fff' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M13 19 C12 14 16 9 24 7 C23 13 19 18 13 19Z' fill='%23fff' opacity='.85'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Young+Serif&display=swap" rel="stylesheet">
+<style>
+:root {
+  --board: #E8EDE9;
+  --paper: #F6F8F5;
+  --ink: #16222A;
+  --pencil: #56666D;
+  --rule: #C3CDC8;
+  --jay: #2155C4;
+  --jay-soft: #D5E0F6;
+  --string: #3B6650;
+  --band: #121A1F;
+  --band-ink: #E3EAE6;
+
+  --display: "Young Serif", Georgia, serif;
+  --body: "Hanken Grotesk", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+  --gutter: clamp(16px, 4vw, 48px);
+  --measure: 1180px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --board: #0F1518;
+    --paper: #161E22;
+    --ink: #DCE5E0;
+    --pencil: #92A3A9;
+    --rule: #2B373C;
+    --jay: #86A7F7;
+    --jay-soft: #1E2C49;
+    --string: #8CC4A4;
+    --band: #E3EAE6;
+    --band-ink: #121A1F;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--board);
+  color: var(--ink);
+  font: 400 1.0625rem/1.6 var(--body);
+  overflow-x: hidden;
+}
+a { color: var(--jay); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--jay); outline-offset: 3px; border-radius: 3px; }
+code, pre { font-family: var(--mono); }
+
+.wrap { max-width: var(--measure); margin: 0 auto; padding: 0 var(--gutter); }
+
+/* A label, in the sense a specimen drawer uses the word. */
+.tag {
+  font: 500 0.72rem/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pencil);
+}
+
+/* -- header ---------------------------------------------------------- */
+.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 22px 0;
+}
+.mark { font: 400 1.35rem/1 var(--display); color: var(--ink); text-decoration: none; }
+.mark em { font-style: normal; color: var(--jay); }
+.top nav { display: flex; gap: clamp(12px, 2.4vw, 28px); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.top nav a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: 0.95rem; }
+.top nav a:hover { color: var(--jay); }
+.version {
+  font: 500 0.75rem/1 var(--mono); padding: 6px 8px; border: 1px solid var(--rule);
+  border-radius: 999px; color: var(--pencil) !important;
+}
+
+/* -- hero ------------------------------------------------------------ */
+.hero {
+  display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px 56px; align-items: end;
+  padding: clamp(40px, 8vw, 96px) 0 clamp(32px, 5vw, 56px);
+}
+h1 {
+  font: 400 clamp(2.7rem, 6.4vw, 5rem)/1 var(--display);
+  letter-spacing: -0.02em; margin: 0;
+}
+h1 .hint { color: var(--jay); }
+.lede { margin: 0 0 22px; font-size: 1.15rem; color: var(--ink); max-width: 34em; }
+.install {
+  display: flex; align-items: stretch; border: 1px solid var(--ink); border-radius: 10px;
+  overflow: hidden; background: var(--paper); max-width: 440px;
+}
+.install code { flex: 1; padding: 13px 16px; font-size: 0.95rem; white-space: nowrap; overflow-x: auto; }
+.install code::before { content: "$ "; color: var(--pencil); }
+.install button {
+  font: 500 0.85rem var(--body); border: 0; border-left: 1px solid var(--ink);
+  background: var(--ink); color: var(--paper); padding: 0 18px; cursor: pointer; min-width: 88px;
+}
+.install button:hover { background: var(--jay); }
+.install + p { margin: 12px 0 0; font-size: 0.92rem; color: var(--pencil); }
+
+/* -- the plate: the page's one signature ------------------------------ */
+.plate {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: clamp(18px, 3vw, 36px);
+  margin: 0;
+  position: relative;
+}
+.plate-head {
+  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--rule); padding-bottom: 14px; margin-bottom: 26px;
+}
+.plate-head .title { font: italic 400 0.95rem var(--mono); color: var(--ink); }
+.plate-body { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 clamp(56px, 7vw, 110px); position: relative; }
+.plate pre {
+  margin: 0; font-size: clamp(0.82rem, 1.25vw, 0.98rem); line-height: 1.75;
+  overflow-x: auto; color: var(--ink);
+}
+.kw { color: var(--pencil); }
+.dec { color: var(--jay); }
+.str { color: var(--string); }
+.com { color: var(--pencil); font-style: italic; }
+
+/* An annotated part: the token in the code, its note, and its piece of the request. */
+[data-k] { transition: background-color .15s, color .15s; border-radius: 4px; }
+pre [data-k] { padding: 1px 3px; margin: 0 -3px; background: color-mix(in srgb, var(--jay-soft) 55%, transparent); }
+pre [data-k]::after, .req [data-k]::after {
+  content: attr(data-k); font: 500 0.62em/1 var(--mono); vertical-align: super;
+  color: var(--jay); margin-left: 2px;
+}
+[data-k].on { background: var(--jay-soft); }
+pre [data-k].on { box-shadow: 0 0 0 1px var(--jay); }
+
+.notes { list-style: none; margin: 0; padding: 0; position: relative; }
+.note {
+  font-size: 0.93rem; line-height: 1.45; padding: 8px 10px; margin: 0 -10px;
+  cursor: default; border-radius: 8px;
+}
+.note b { display: block; font: 500 0.72rem/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--jay); margin-bottom: 2px; }
+.note b span { color: var(--pencil); margin-right: 6px; }
+.note.on { background: var(--jay-soft); }
+.note code { font-size: 0.88em; }
+
+.leaders { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.leaders path { fill: none; stroke: var(--jay); stroke-width: 1; opacity: .55; }
+.leaders circle { fill: var(--jay); }
+.leaders .on { opacity: 1; stroke-width: 1.5; }
+@media (prefers-reduced-motion: no-preference) {
+  .leaders.draw path { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw .7s ease-out forwards; animation-delay: var(--delay); }
+  .leaders.draw circle { opacity: 0; animation: appear .2s forwards; animation-delay: var(--delay); }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes appear { to { opacity: 1; } }
+}
+
+.req {
+  margin-top: 28px; padding-top: 18px; border-top: 1px dashed var(--rule);
+  display: grid; gap: 10px;
+}
+.req div { display: grid; grid-template-columns: 7.5em 1fr; gap: 12px; align-items: baseline; }
+.req code { font-size: 0.88rem; overflow-wrap: anywhere; }
+.req code .arrow { color: var(--pencil); }
+
+/* -- the catalogue label --------------------------------------------- */
+.label {
+  margin: clamp(48px, 8vw, 88px) 0 0;
+  display: grid; grid-template-columns: repeat(5, auto); justify-content: space-between; gap: 18px 28px;
+  border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink);
+  padding: 18px 0;
+}
+.label dt { margin: 0 0 4px; }
+.label dd { margin: 0; font: 400 1.5rem/1.1 var(--display); }
+.label dd small { font: 400 0.85rem var(--body); color: var(--pencil); margin-left: 4px; }
+
+/* -- sections -------------------------------------------------------- */
+section { padding: clamp(64px, 10vw, 120px) 0 0; }
+.sec-head { display: grid; grid-template-columns: 1fr 1.2fr; gap: 16px 56px; margin-bottom: 40px; align-items: end; }
+h2 { font: 400 clamp(1.9rem, 3.6vw, 2.8rem)/1.05 var(--display); letter-spacing: -0.015em; margin: 8px 0 0; }
+.sec-head p { margin: 0; color: var(--ink); max-width: 36em; }
+
+/* weighing */
+.scale { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.scale li {
+  display: grid; grid-template-columns: 8.5em 1fr; gap: 16px; align-items: center;
+  padding: 6px 0; border-radius: 6px; position: relative;
+}
+.scale .name { font-weight: 500; }
+.scale .track { position: relative; height: 22px; display: flex; align-items: center; gap: 10px; }
+.scale .bar { height: 14px; border-radius: 0 4px 4px 0; background: var(--pencil); opacity: .45; flex: none; }
+.scale .us .bar { background: var(--jay); opacity: 1; }
+.scale .us .name { color: var(--jay); }
+.scale .val { font: 400 0.85rem var(--mono); color: var(--ink); white-space: nowrap; }
+.scale li:hover .bar, .scale li:focus-within .bar { opacity: .8; }
+.scale .us:hover .bar { opacity: 1; }
+.tip {
+  position: absolute; z-index: 2; pointer-events: none; background: var(--band); color: var(--band-ink);
+  font: 400 0.8rem/1.4 var(--mono); padding: 8px 10px; border-radius: 6px; white-space: nowrap;
+  opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s;
+}
+.tip.show { opacity: 1; transform: none; }
+.fine { font-size: 0.88rem; color: var(--pencil); margin: 20px 0 0; max-width: 60em; }
+
+/* the case: what ships in the box */
+.case { display: grid; gap: 0; border-top: 1px solid var(--rule); }
+.item {
+  display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px 56px;
+  padding: 36px 0; border-bottom: 1px solid var(--rule);
+}
+.item h3 { font: 600 1.2rem/1.3 var(--body); margin: 6px 0 8px; }
+.item p { margin: 0; }
+.item pre {
+  margin: 0; background: var(--paper); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 16px 18px; font-size: 0.85rem; line-height: 1.65; overflow-x: auto;
+}
+
+/* comparison */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.93rem; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+thead th { font: 500 0.72rem/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--pencil); }
+thead th.us, td.us { background: color-mix(in srgb, var(--jay-soft) 60%, transparent); }
+thead th.us { color: var(--jay); }
+tbody th { font-weight: 500; }
+.no { color: var(--pencil); }
+
+.choose { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 56px; margin-top: 40px; }
+.choose p { margin: 0; }
+.choose strong { font-weight: 600; }
+
+/* closing band */
+.band { background: var(--band); color: var(--band-ink); margin-top: clamp(72px, 10vw, 128px); }
+.band .wrap { display: grid; grid-template-columns: 1.2fr 1fr; gap: 32px 56px; align-items: center; padding-top: clamp(48px, 7vw, 80px); padding-bottom: clamp(48px, 7vw, 80px); }
+.band h2 { margin: 0; }
+.band .install { border-color: var(--band-ink); background: transparent; }
+.band .install code { color: var(--band-ink); }
+.band .install code::before { color: color-mix(in srgb, var(--band-ink) 60%, transparent); }
+.band .install button { background: var(--band-ink); color: var(--band); border-left-color: var(--band-ink); }
+.band .install button:hover { background: var(--jay); color: #fff; }
+.band .links { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 18px; }
+.band a { color: var(--band-ink); }
+
+footer { padding: 22px 0 40px; background: var(--band); color: color-mix(in srgb, var(--band-ink) 65%, transparent); font-size: 0.85rem; }
+.foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-top: 1px solid color-mix(in srgb, var(--band-ink) 20%, transparent); padding-top: 22px; }
+footer a { color: inherit; }
+
+/* -- narrow screens -------------------------------------------------- */
+@media (max-width: 900px) {
+  .hero, .sec-head, .item, .band .wrap, .choose { grid-template-columns: 1fr; }
+  .plate-body { grid-template-columns: 1fr; }
+  .leaders { display: none; }
+  .notes { margin-top: 22px; padding-top: 14px; border-top: 1px dashed var(--rule); }
+  .notes .note { position: static !important; }
+  .label { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scale li { grid-template-columns: 6.5em 1fr; gap: 10px; }
+}
+@media (max-width: 520px) {
+  .top nav a:not(.version):not(.gh) { display: none; }
+  .req div { grid-template-columns: 1fr; gap: 2px; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <a class="mark" href="#" aria-label="featherweb home"><em>feather</em>web</a>
+    <nav aria-label="Main">
+      <a href="https://github.com/lucas-lmoura/featherweb#guide">Guide</a>
+      <a href="https://github.com/lucas-lmoura/featherweb/blob/main/docs/api.md">API reference</a>
+      <a class="gh" href="https://github.com/lucas-lmoura/featherweb">GitHub</a>
+      <a class="version" href="https://pypi.org/project/featherweb/">PyPI 1.0.0</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Your <span class="hint">type hints</span> are the whole spec.</h1>
+    <div>
+      <p class="lede">featherweb is an async web framework for Python. Write controllers, annotate
+        the handlers, and it works out the rest: where each argument comes from, what gets a 422,
+        and what the response looks like. It includes its own server and uses nothing outside the
+        standard library.</p>
+      <div class="install">
+        <code id="cmd-top">pip install featherweb</code>
+        <button type="button" data-copy="cmd-top">Copy</button>
+      </div>
+      <p>Python 3.12+ · or <code>uv add featherweb</code></p>
+    </div>
+  </div>
+
+  <figure class="plate" id="plate" aria-labelledby="plate-title">
+    <div class="plate-head">
+      <span class="title" id="plate-title">Plate I. Where a handler's arguments come from</span>
+      <span class="tag">Hover or tap a note</span>
+    </div>
+    <div class="plate-body">
+<pre><code><span class="dec">@Route</span>(<span class="str">"/tasks"</span>)
+<span class="kw">class</span> TaskController:
+    <span class="dec">@Get</span>(<span class="str">"/{task_id:int}"</span>)
+    <span class="kw">async def</span> show(
+        self,
+        <span data-k="a" tabindex="0">task_id: int</span>,
+        <span data-k="b" tabindex="0">verbose: bool = False</span>,
+    ) <span data-k="c" tabindex="0">-&gt; Task</span>:
+        <span class="kw">return</span> find(task_id, verbose)
+
+    <span class="dec">@Post</span>(status=<span class="str">201</span>)
+    <span class="kw">async def</span> create(
+        self, <span data-k="d" tabindex="0">task: Task</span>
+    ) -&gt; Task:
+        <span class="kw">return</span> save(task)</code></pre>
+      <ol class="notes" id="notes">
+        <li class="note" data-k="a" tabindex="0"><b><span>a</span>Path</b>
+          <code>task_id</code> is named in the route, so it is read from the path and converted to
+          an <code>int</code>. <code>/tasks/abc</code> is simply not this route.</li>
+        <li class="note" data-k="b" tabindex="0"><b><span>b</span>Query string</b>
+          A simple type that is not in the route comes from the query string. It has a default, so
+          it is optional.</li>
+        <li class="note" data-k="c" tabindex="0"><b><span>c</span>Response</b>
+          The return type shapes the JSON. Anything the object carries beyond <code>Task</code>'s
+          fields is never sent.</li>
+        <li class="note" data-k="d" tabindex="0"><b><span>d</span>JSON body</b>
+          A dataclass can only be the body. A field of the wrong type is a 422 that names it, with
+          every problem reported at once.</li>
+      </ol>
+    </div>
+    <div class="req" aria-label="Requests this controller answers">
+      <div><span class="tag">Request</span>
+        <code>GET /tasks/<span data-k="a">7</span>?<span data-k="b">verbose=true</span></code></div>
+      <div><span class="tag">Response</span>
+        <code><span class="arrow">200</span> <span data-k="c">{"id": 7, "title": "write docs", "done": false}</span></code></div>
+      <div><span class="tag">Request</span>
+        <code>POST /tasks <span data-k="d">{"id": 8, "title": "ship it"}</span> <span class="arrow">→ 201</span></code></div>
+    </div>
+    <svg class="leaders draw" id="leaders" aria-hidden="true"></svg>
+  </figure>
+
+  <dl class="label" aria-label="featherweb at a glance">
+    <div><dt class="tag">Version</dt><dd>1.0.0</dd></div>
+    <div><dt class="tag">Runtime dependencies</dt><dd>0</dd></div>
+    <div><dt class="tag">Import time</dt><dd>21<small>ms</small></dd></div>
+    <div><dt class="tag">Python</dt><dd>3.12+</dd></div>
+    <div><dt class="tag">Licence</dt><dd>MIT</dd></div>
+  </dl>
+
+  <section aria-labelledby="weigh">
+    <div class="sec-head">
+      <div><span class="tag">Import cost</span><h2 id="weigh">Weighed against the others</h2></div>
+      <p>What <code>import &lt;framework&gt;</code> costs before the first request. You pay it on
+        every process start, including CLI tools, serverless cold starts and each run of the test
+        suite.</p>
+    </div>
+    <ul class="scale" id="scale"></ul>
+    <p class="fine">Best of 7 runs of <code>python -X importtime</code>, counting everything the import
+      loads beyond a bare interpreter. CPython 3.12 on one Windows desktop, measured with
+      <a href="https://github.com/lucas-lmoura/featherweb/blob/main/benchmarks/compare.py">benchmarks/compare.py</a>.
+      Run it on your own machine before relying on the numbers. Throughput behind the same uvicorn
+      is in the same range as Starlette's.</p>
+  </section>
+
+  <section aria-labelledby="case">
+    <div class="sec-head">
+      <div><span class="tag">Included</span><h2 id="case">What ships in the box</h2></div>
+      <p>Each piece below ships with the framework and is loaded only when something uses it, so an
+        app that never opens a WebSocket never imports the WebSocket code.</p>
+    </div>
+    <div class="case">
+      <div class="item">
+        <div><span class="tag">Controllers</span><h3>Routes grouped the way you think about them</h3>
+          <p>A class per resource, one prefix, and guards and error handlers that apply to the
+            whole class. Anything the framework cannot provide is an error at startup, not a 500 in
+            production.</p></div>
+<pre><code class="py">@Route("/users")
+@Authenticated
+class UserController:
+    @Get("/{user_id:uuid}")
+    async def show(self, user_id: UUID) -&gt; PublicUser: ...
+
+    @Delete("/{user_id:uuid}")
+    @Roles("admin")
+    async def remove(self, user_id: UUID) -&gt; None: ...  # 204</code></pre>
+      </div>
+      <div class="item">
+        <div><span class="tag">Server</span><h3>Its own HTTP/1.1 and WebSocket server</h3>
+          <p>Strict limits by default, request-smuggling defences, TLS and multiple workers. It is
+            ASGI underneath, so uvicorn, hypercorn and granian run the same app unchanged.</p></div>
+<pre><code class="sh">featherweb run app:app --port 8000
+featherweb run app:app --workers 4
+uvicorn app:app            # also fine</code></pre>
+      </div>
+      <div class="item">
+        <div><span class="tag">Authentication</span><h3>Sessions, JWT and roles</h3>
+          <p>Signed-cookie sessions or bearer tokens behind one setting. JWT follows RFC 8725:
+            you name the algorithms, and <code>alg: none</code> is always refused.</p></div>
+<pre><code class="py">auth = JWTAuth(SECRET, algorithms=["HS256"])
+app = App(controllers=[UserController], auth=auth)
+
+token = auth.issue("ada", roles=["admin"])</code></pre>
+      </div>
+      <div class="item">
+        <div><span class="tag">Real time</span><h3>WebSocket in the same controller</h3>
+          <p>Framing, masking and ping/pong happen below the handler, in whichever server is
+            running.</p></div>
+<pre><code class="py">@Ws("/echo")
+async def echo(self, ws: WebSocket) -&gt; None:
+    await ws.accept()
+    async for message in ws.iter_text():
+        await ws.send_text(f"echo: {message}")</code></pre>
+      </div>
+      <div class="item">
+        <div><span class="tag">Files</span><h3>Uploads, downloads and streams</h3>
+          <p>Uploads are parsed as they arrive and spooled to disk past 1 MB. File responses
+            handle ETag, 304 and Range requests without extra code.</p></div>
+<pre><code class="py">@Post("/upload")
+async def upload(self, document: UploadFile) -&gt; dict[str, int]:
+    return {"size": document.size}  # spooled, never all in memory</code></pre>
+      </div>
+      <div class="item">
+        <div><span class="tag">Testing</span><h3>Tests without a socket</h3>
+          <p><code>TestClient</code> calls the app directly and runs its startup and shutdown
+            hooks.</p></div>
+<pre><code class="py">async with TestClient(app) as client:
+    response = await client.post("/tasks", json={"id": "x"})
+assert response.status == 422</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="compare">
+    <div class="sec-head">
+      <div><span class="tag">Comparison</span><h2 id="compare">How it sits among the others</h2></div>
+      <p>featherweb takes typed input and output from FastAPI and Litestar, and the small footprint
+        from Starlette and Falcon. It deliberately leaves out dependency injection.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col"></th><th scope="col" class="us">featherweb</th><th scope="col">FastAPI</th><th scope="col">Starlette</th><th scope="col">Litestar</th><th scope="col">Flask</th><th scope="col">Falcon</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Runtime dependencies</th><td class="us">0</td><td>10</td><td>4</td><td>26</td><td>7</td><td>0</td></tr>
+          <tr><th scope="row">Input from type hints</th><td class="us">yes</td><td>yes</td><td class="no">no</td><td>yes</td><td class="no">no</td><td class="no">no</td></tr>
+          <tr><th scope="row">Response shaped by return type</th><td class="us">yes</td><td>yes</td><td class="no">no</td><td>yes</td><td class="no">no</td><td class="no">no</td></tr>
+          <tr><th scope="row">Class-based controllers</th><td class="us">yes</td><td class="no">no</td><td>endpoints</td><td>yes</td><td>views</td><td>resources</td></tr>
+          <tr><th scope="row">Production server included</th><td class="us">yes</td><td class="no">no</td><td class="no">no</td><td class="no">no</td><td class="no">no</td><td class="no">no</td></tr>
+          <tr><th scope="row">Automatic OpenAPI</th><td class="us no">not yet</td><td>yes</td><td class="no">no</td><td>yes</td><td class="no">no</td><td class="no">no</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="choose">
+      <p><strong>Pick FastAPI or Litestar</strong> if you want generated OpenAPI docs, dependency
+        injection, Pydantic and a large ecosystem.</p>
+      <p><strong>Pick featherweb</strong> if you want typed controllers, an included server and
+        auth, and no dependency tree to maintain.</p>
+    </div>
+  </section>
+</div>
+
+<div class="band">
+  <div class="wrap">
+    <h2>Start with one controller.</h2>
+    <div>
+      <div class="install">
+        <code id="cmd-bottom">pip install featherweb</code>
+        <button type="button" data-copy="cmd-bottom">Copy</button>
+      </div>
+      <div class="links">
+        <a href="https://github.com/lucas-lmoura/featherweb#guide">Read the guide</a>
+        <a href="https://github.com/lucas-lmoura/featherweb/blob/main/docs/api.md">API reference</a>
+        <a href="https://github.com/lucas-lmoura/featherweb">Source on GitHub</a>
+      </div>
+    </div>
+  </div>
+</div>
+<footer>
+  <div class="wrap"><div class="foot">
+    <span>featherweb 1.0.0 · MIT licence</span>
+    <span><a href="https://pypi.org/project/featherweb/">PyPI</a> · <a href="https://github.com/lucas-lmoura/featherweb/issues">Report an issue</a></span>
+  </div></div>
+</footer>
+
+<div class="tip" id="tip" role="status"></div>
+
+<script>
+(() => {
+  // -- copy buttons ---------------------------------------------------
+  for (const button of document.querySelectorAll("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      const text = document.getElementById(button.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Press Ctrl+C";
+        getSelection().selectAllChildren(document.getElementById(button.dataset.copy));
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 1800);
+    });
+  }
+
+  // -- the plate: link each annotation to its note and its request part --
+  const plate = document.getElementById("plate");
+  const svg = document.getElementById("leaders");
+  const notes = document.getElementById("notes");
+  const wide = matchMedia("(min-width: 901px)");
+  const NS = "http://www.w3.org/2000/svg";
+
+  function activate(key) {
+    for (const el of plate.querySelectorAll("[data-k]")) el.classList.toggle("on", el.dataset.k === key);
+  }
+  for (const el of plate.querySelectorAll("[data-k]")) {
+    el.addEventListener("pointerenter", () => activate(el.dataset.k));
+    el.addEventListener("focus", () => activate(el.dataset.k));
+    el.addEventListener("click", () => activate(el.dataset.k));
+  }
+  plate.addEventListener("pointerleave", () => activate(null));
+  plate.addEventListener("focusout", (event) => { if (!plate.contains(event.relatedTarget)) activate(null); });
+
+  // On a wide screen each note sits level with its token, joined by a leader line.
+  function layout() {
+    svg.replaceChildren();
+    const items = [...notes.children];
+    if (!wide.matches) { items.forEach((n) => { n.style.position = ""; n.style.top = ""; }); notes.style.height = ""; return; }
+    const box = plate.getBoundingClientRect();
+    const listBox = notes.getBoundingClientRect();
+    svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
+    let floor = 0;
+    items.forEach((note, index) => {
+      const token = plate.querySelector(`pre [data-k="${note.dataset.k}"]`);
+      const t = token.getBoundingClientRect();
+      const y = t.top + t.height / 2 - listBox.top;
+      const top = Math.max(y - 16, floor);
+      note.style.position = "absolute";
+      note.style.top = `${top}px`;
+      note.style.left = "10px"; note.style.right = "-10px";
+      floor = top + note.offsetHeight + 6;
+
+      const x1 = t.right - box.left + 6, y1 = t.top + t.height / 2 - box.top;
+      const x2 = listBox.left - box.left - 8, y2 = listBox.top - box.top + top + 16;
+      const bend = x2 - 18;
+      const d = `M${x1},${y1} H${bend} L${x2},${y2}`;
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("d", d);
+      path.dataset.k = note.dataset.k;
+      const len = (bend - x1) + Math.hypot(x2 - bend, y2 - y1);
+      path.style.setProperty("--len", len.toFixed(1));
+      path.style.setProperty("--delay", `${0.25 + index * 0.18}s`);
+      const dot = document.createElementNS(NS, "circle");
+      dot.setAttribute("cx", x1); dot.setAttribute("cy", y1); dot.setAttribute("r", 2.5);
+      dot.style.setProperty("--delay", `${0.25 + index * 0.18}s`);
+      svg.append(path, dot);
+    });
+    notes.style.height = `${floor}px`;
+  }
+  const relayout = () => requestAnimationFrame(layout);
+  document.fonts.ready.then(() => { layout(); setTimeout(() => svg.classList.remove("draw"), 2500); });
+  addEventListener("resize", relayout);
+  wide.addEventListener("change", relayout);
+
+  // -- light syntax colouring for the smaller snippets -----------------
+  const TOKEN = /(#.*$)|("[^"]*")|(@\w+)|\b(async|await|def|class|return|for|in|with|as|assert|None|True|False)\b/gm;
+  for (const block of document.querySelectorAll("code.py")) {
+    block.innerHTML = block.innerHTML.replace(TOKEN, (m, com, str, dec, kw) =>
+      com ? `<span class="com">${m}</span>` : str ? `<span class="str">${m}</span>`
+        : dec ? `<span class="dec">${m}</span>` : `<span class="kw">${m}</span>`);
+  }
+  for (const block of document.querySelectorAll("code.sh")) {
+    block.innerHTML = block.innerHTML.replace(/(#.*$)/gm, '<span class="com">$1</span>');
+  }
+
+  // -- import cost ----------------------------------------------------
+  const DATA = [
+    ["featherweb", 21.1, 29, 0],
+    ["Starlette", 168.2, 178, 4],
+    ["Falcon", 203.6, 229, 0],
+    ["Flask", 271.0, 264, 7],
+    ["BlackSheep", 332.3, 303, 15],
+    ["Litestar", 434.8, 430, 26],
+    ["Quart", 448.9, 437, 20],
+    ["FastAPI", 468.1, 318, 10],
+  ];
+  const max = Math.max(...DATA.map((d) => d[1]));
+  const scale = document.getElementById("scale");
+  const tip = document.getElementById("tip");
+  for (const [name, ms, modules, deps] of DATA) {
+    const li = document.createElement("li");
+    if (name === "featherweb") li.className = "us";
+    li.tabIndex = 0;
+    const summary = `${name}: ${ms.toFixed(0)} ms, ${modules} modules, ${deps} ${deps === 1 ? "dependency" : "dependencies"}`;
+    li.setAttribute("aria-label", summary);
+    li.innerHTML = `<span class="name">${name}</span><span class="track"><span class="bar" style="width:calc((100% - 5.5em) * ${ms / max})"></span><span class="val">${ms.toFixed(0)} ms</span></span>`;
+    const show = (x, y) => {
+      tip.innerHTML = `${name}<br>${ms.toFixed(1)} ms · ${modules} modules · ${deps} deps`;
+      tip.style.left = `${Math.min(x + 14, innerWidth - tip.offsetWidth - 12)}px`;
+      tip.style.top = `${y + 14}px`;
+      tip.classList.add("show");
+    };
+    li.addEventListener("pointermove", (e) => show(e.pageX, e.pageY));
+    li.addEventListener("focus", () => { const r = li.getBoundingClientRect(); show(r.left + scrollX + 120, r.bottom + scrollY - 10); });
+    li.addEventListener("pointerleave", () => tip.classList.remove("show"));
+    li.addEventListener("blur", () => tip.classList.remove("show"));
+    scale.append(li);
+  }
+
+  // -- keep the highlight on the leader lines too ----------------------
+  const syncLines = () => {
+    const on = plate.querySelector("pre [data-k].on");
+    for (const p of svg.querySelectorAll("path")) p.classList.toggle("on", !!on && p.dataset.k === on.dataset.k);
+  };
+  plate.addEventListener("pointerover", syncLines);
+  plate.addEventListener("focusin", () => setTimeout(syncLines));
+  plate.addEventListener("pointerleave", syncLines);
+})();
+</script>
+</body>
+</html>
