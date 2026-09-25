@@ -93,7 +93,47 @@ def starlette_app() -> Any:
     )
 
 
+def fastapi_app() -> Any:
+    """The same routes under FastAPI, or ``None`` when it is not installed."""
+    try:
+        from fastapi import FastAPI
+        from fastapi.responses import FileResponse, PlainTextResponse
+    except ImportError:
+        return None
+
+    sample = ensure_sample()
+    api = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+
+    @api.get("/plaintext", response_class=PlainTextResponse)
+    async def plaintext() -> str:  # pyright: ignore[reportUnusedFunction]
+        return "Hello, World!"
+
+    @api.get("/json")
+    async def json_route() -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
+        return PAYLOAD
+
+    @api.get("/user/{user_id}")
+    async def user(user_id: int) -> dict[str, int]:  # pyright: ignore[reportUnusedFunction]
+        return {"id": user_id}
+
+    @api.get("/file")
+    async def file() -> FileResponse:  # pyright: ignore[reportUnusedFunction]
+        return FileResponse(sample, media_type="application/octet-stream")
+
+    return api
+
+
 #: What ``featherweb run`` and ``uvicorn`` load when pointed at this module.
 app = featherweb_app()
-#: The comparison, when Starlette is installed; ``None`` otherwise.
+#: The comparisons, when the framework is installed; ``None`` otherwise.
 starlette = starlette_app()
+fastapi = fastapi_app()
+
+#: Every stack ``compare.py`` serves: a label, the ASGI target and a port. The
+#: last word of the label says which server runs it.
+STACKS: list[tuple[str, str, int]] = [
+    ("featherweb (own server)", "benchmarks.apps:app", 8801),
+    ("featherweb + uvicorn", "benchmarks.apps:app", 8802),
+    *([("starlette + uvicorn", "benchmarks.apps:starlette", 8803)] if starlette else []),
+    *([("fastapi + uvicorn", "benchmarks.apps:fastapi", 8804)] if fastapi else []),
+]

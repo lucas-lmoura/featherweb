@@ -44,6 +44,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
+bench = [
+    "blacksheep>=2.6.3",
+    "falcon>=4.3.1",
+    "fastapi>=0.141.1",
+    "litestar>=2.24.0",
+    "quart>=0.22.0",
+]
 dev = [
     "coverage>=7.16.1",
     "cryptography>=50.0.1",
