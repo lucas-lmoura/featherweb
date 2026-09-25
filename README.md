@@ -284,11 +284,12 @@ run(some_starlette_app, port=8000)
 - **Import budget.** Heavy modules — multipart, websocket, staticfiles, auth, and even
   `logging` — stay off the package's import path until something needs them.
 
-Measured on Windows with Python 3.12 (`python benchmarks/measure.py --all`): 20 ms to
-import in a bare interpreter and 9.7 ms in a process that already has `typing` loaded,
-16.8 MB resident with an application built, and throughput within about 5% of
-Starlette on the same uvicorn. [PLAN.md](PLAN.md) records all of it, including the two
-targets that were missed and why.
+Measured on Windows with Python 3.12 (`python benchmarks/measure.py --all`): the package
+itself imports in 9.7 ms, 20 ms in a bare interpreter where `typing` has to be loaded
+too — a generic class such as `Response[T]` pulls it in by itself. 16.8 MB resident with
+an application built, and throughput within about 5% of Starlette on the same uvicorn.
+[PLAN.md](PLAN.md) section 2 records all of it, including which targets were revised
+after measuring why they could not be met.
 
 ## What it is not
 

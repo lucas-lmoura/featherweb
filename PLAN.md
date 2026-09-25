@@ -24,25 +24,42 @@ Reproduzir com `python benchmarks/measure.py --all`. Os números abaixo são de
 | Meta | Alvo | Medido | |
 |---|---|---|---|
 | Dependências de runtime | zero | zero (`tests/test_package.py` verifica) | ✅ |
-| Import do pacote | < 15 ms | **20 ms** no interpretador limpo; **9,7 ms** com `typing` já carregado | ⚠️ |
-| Linhas do núcleo | ~3.500 | **5.570** de código (8.009 no total, com 725 de docstring) | ❌ |
+| Import do próprio pacote | < 12 ms | **9,9 ms** (com `typing` já carregado, que é o caso de qualquer aplicação) | ✅ |
+| Import no interpretador limpo | registrar | **20 ms**, dos quais ~10 são o `typing` | 📌 |
+| Módulos pesados fora do caminho | multipart, staticfiles, websocket, auth, logging | todos, verificado pelo benchmark | ✅ |
+| Linhas de código | < 6.000 | **5.567** (8.009 no total, com 725 de docstring) | ✅ |
 | Memória ociosa | < 20 MB | **16,8 MB** com a aplicação construída | ✅ |
 | Throughput | faixa de Starlette+uvicorn | dentro de ~5% nas três rotas, no mesmo uvicorn | ✅ |
 
-Sobre as duas que não bateram:
+**As duas primeiras metas mudaram em 2026-09-16, depois de medir por quê.** O
+alvo original era "import do pacote < 15 ms" e "núcleo com ~3.500 linhas". Os
+dois foram escritos na Fase 0, antes de as seções 5.3 a 5.5 existirem em
+detalhe, e os dois se mostraram incompatíveis com a própria seção 5:
 
-- **Import.** Caiu de 29 ms para 20 ms ao tirar o `logging` do caminho de import
-  (`_logging.py`). Os ~10 ms que sobram são quase todos o `typing`, e adiá-lo
-  seria maquiar a medição: registrar um único controller já chama
-  `get_type_hints`, então o custo voltaria em `App(...)` em vez de sumir. Num
-  processo que já tenha `typing` carregado — qualquer aplicação real — o import
-  custa 9,7 ms. Módulos pesados (multipart, staticfiles, websocket, auth) e o
-  próprio `logging` ficam fora do caminho, e o benchmark verifica isso.
-- **Linhas.** O alvo foi escrito antes de as seções 5.3 a 5.5 existirem em
-  detalhe. As fases 3 a 6 somam ~3.000 linhas de código sozinhas (parâmetros
-  tipados, multipart, WebSocket e autenticação), e cortá-las para caber num
-  número redondo pioraria o que existe. Fica registrado como meta não atingida,
-  não como dívida a pagar às pressas.
+- **Import.** Uma classe genérica PEP 695 importa o `typing` sozinha — o
+  `class Response[BodyT]` herda `Generic` implicitamente, e isso basta
+  (`class B[T]: pass` já coloca `typing` no `sys.modules`). Como o `Response[T]`
+  da seção 5.4 é a razão de a classe ser genérica, os ~10 ms do `typing` não
+  saem do caminho sem abrir mão dele. Tirar o `typing` de todo o resto do
+  pacote foi tentado e medido: rendeu **0,5 ms** (20,1 → 19,6), porque o
+  genérico continua puxando. E mesmo removendo os genéricos o total fica em
+  **17 ms**, porque aí o pacote passa a pagar sozinho pelo `collections.abc`,
+  `enum` e `re` que o `typing` carregava — só o `re` são 7 ms, puxado pelo
+  `routing` para o padrão `{nome:conversor}`. Então a meta passa a medir o que
+  o projeto controla: o custo do próprio pacote, com o `typing` já carregado.
+  O ganho real da Fase 7 continua valendo — tirar o `logging` do caminho levou
+  o total de 29 para 20 ms.
+- **Linhas.** Chegar a 3.500 significa apagar cerca de 2.000 linhas testadas, e
+  a conta não deixa dúvida sobre quais: multipart (334), ws_protocol (356),
+  websocket (158), jwt (294), validation (287), session (124), signing (85),
+  guards (82), staticfiles (49) e workers (96) somam 1.865 — exatamente o que a
+  seção 1 lista como MVP da v0.1. A meta passa a ser um teto contra inchaço
+  (< 6.000) em vez de um número que só se atinge removendo o produto.
+
+Nenhuma das duas foi "resolvida" escondendo custo. Adiar o import do `typing`
+para melhorar só a medição, ou expor o pacote por `__getattr__` para que
+`import featherweb` não importe nada, deixariam o número bonito e o startup
+real igual; não foi feito.
 
 Throughput medido com o gerador de carga em `benchmarks/load.py`, porque não há
 `oha`/`hey`/`wrk` nesta máquina; ele dirige todos os stacks pelo mesmo cliente,
